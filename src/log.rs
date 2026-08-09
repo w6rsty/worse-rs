@@ -469,15 +469,13 @@ static LOCAL_TIME_ZONE_OFFSET: OnceLock<time::UtcOffset> = OnceLock::new();
 /// falls back to UTC rather than erroring.
 #[allow(dead_code)]
 pub fn capture_local_time_zone_offset() {
-    let _ = LOCAL_TIME_ZONE_OFFSET
-        .set(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC));
+    let _ = LOCAL_TIME_ZONE_OFFSET.set(time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC));
 }
 
 /// The pinned offset, resolving it lazily if [`capture_local_time_zone_offset`]
 /// was never called.
 fn local_time_zone_offset() -> time::UtcOffset {
-    *LOCAL_TIME_ZONE_OFFSET
-        .get_or_init(|| time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
+    *LOCAL_TIME_ZONE_OFFSET.get_or_init(|| time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC))
 }
 
 // ---------------------------------------------------------------------------
@@ -702,8 +700,7 @@ pub fn init(config: LogConfig) -> Result<LoggerGuard, LogError> {
     if let Some(write_console_config) = &config.write_console_config {
         // `BoxMakeWriter` erases the difference between a bare stream and a
         // worker-backed one so the four cases converge on a single type.
-        let make: BoxMakeWriter = match (write_console_config.target, write_console_config.blocking)
-        {
+        let make: BoxMakeWriter = match (write_console_config.target, write_console_config.blocking) {
             (ConsoleTarget::Stdout, true) => BoxMakeWriter::new(io::stdout),
             (ConsoleTarget::Stderr, true) => BoxMakeWriter::new(io::stderr),
             (ConsoleTarget::Stdout, false) => {
@@ -728,9 +725,7 @@ pub fn init(config: LogConfig) -> Result<LoggerGuard, LogError> {
             }
         };
 
-        let layer_base = fmt::layer()
-            .with_ansi(write_console_config.ansi)
-            .with_writer(make);
+        let layer_base = fmt::layer().with_ansi(write_console_config.ansi).with_writer(make);
 
         // Each timer produces a differently-typed layer, so the branches box
         // separately rather than reassigning one binding.
@@ -765,9 +760,7 @@ pub fn init(config: LogConfig) -> Result<LoggerGuard, LogError> {
         // ANSI is off on every file sink: escape codes are noise in a file and
         // break naive log parsers.
         if write_file_config.force_sync {
-            stack.push(Box::new(
-                fmt::layer().with_ansi(false).with_writer(appender),
-            ));
+            stack.push(Box::new(fmt::layer().with_ansi(false).with_writer(appender)));
         } else {
             let (non_blocking_writer, guard) = NonBlockingBuilder::default()
                 .buffered_lines_limit(write_file_config.queue_length)
@@ -775,11 +768,7 @@ pub fn init(config: LogConfig) -> Result<LoggerGuard, LogError> {
                 .finish(appender);
             dropped.push(non_blocking_writer.error_counter());
             guards.push(guard);
-            stack.push(Box::new(
-                fmt::layer()
-                    .with_ansi(false)
-                    .with_writer(non_blocking_writer),
-            ));
+            stack.push(Box::new(fmt::layer().with_ansi(false).with_writer(non_blocking_writer)));
         }
 
         if let Some(level) = write_file_config.crash_from {
@@ -807,9 +796,7 @@ pub fn init(config: LogConfig) -> Result<LoggerGuard, LogError> {
     // --- Ring buffer -------------------------------------------------------
     let ring = if config.ring_capacity > 0 {
         let inner = Ring::new(config.ring_capacity);
-        stack.push(Box::new(RingLayer {
-            ring: inner.clone(),
-        }));
+        stack.push(Box::new(RingLayer { ring: inner.clone() }));
         Some(inner)
     } else {
         None
@@ -883,13 +870,7 @@ pub fn recent(n: usize) -> Vec<String> {
 pub fn dropped_lines() -> usize {
     GLOBAL
         .get()
-        .map(|global| {
-            global
-                .dropped
-                .iter()
-                .map(|counter| counter.dropped_lines())
-                .sum()
-        })
+        .map(|global| global.dropped.iter().map(|counter| counter.dropped_lines()).sum())
         .unwrap_or(0)
 }
 
