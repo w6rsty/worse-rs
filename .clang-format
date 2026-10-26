@@ -1,0 +1,144 @@
+---
+# ============================================================
+# For Slang shading language
+# ============================================================
+BasedOnStyle: LLVM
+
+# ============================================================
+# Basic indentation
+# ============================================================
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+
+# Do not force line wrapping
+ColumnLimit: 0
+
+# ============================================================
+# Brackets / braces
+# ============================================================
+
+# Align continuation lines with the opening bracket
+AlignAfterOpenBracket: Align
+
+# Attach
+#
+# if (foo) {
+#     ...
+# }
+#
+BreakBeforeBraces: Attach
+
+# ============================================================
+# Comments
+# ============================================================
+
+# Keep at least one space after //.
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: -1
+
+# Align trailing comments
+AlignTrailingComments: true
+
+# ============================================================
+# Preprocessor
+# ============================================================
+
+IndentPPDirectives: BeforeHash
+
+# ============================================================
+# Assignments
+# ============================================================
+
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+
+# ============================================================
+# Case labels
+# ============================================================
+
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCaseArrows: false
+  AlignCaseColons: true
+
+# ============================================================
+# Short statements / functions / lambdas
+# ============================================================
+
+# Allow:
+#
+# if (foo)
+#     bar();
+#
+# but don't collapse else-if chains etc.
+AllowShortIfStatementsOnASingleLine: OnlyFirstIf
+
+# Keep short functions inline when possible
+AllowShortFunctionsOnASingleLine: InlineOnly
+
+# Allow short lambdas to stay on one line
+AllowShortLambdasOnASingleLine: Inline
+
+# Allow short enums to stay on one line
+AllowShortEnumsOnASingleLine: true
+
+# ============================================================
+# Function arguments
+# ============================================================
+
+# Do not pack multiple arguments into one line when formatting
+BinPackArguments: false
+
+# Do not force all arguments onto the next line
+AllowAllArgumentsOnNextLine: false
+
+# ============================================================
+# Namespace / access modifiers
+# ============================================================
+
+NamespaceIndentation: All
+
+IndentAccessModifiers: false
+AccessModifierOffset: -4
+
+# ============================================================
+# Pointer / reference
+# ============================================================
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# ============================================================
+# Includes
+# ============================================================
+
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# ============================================================
+# Constructor initializer lists
+# ============================================================
+
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+BreakConstructorInitializers: BeforeComma
+
+# ============================================================
+# Function declarations
+# ============================================================
+
+IndentWrappedFunctionNames: false
+
+# ============================================================
+# using declarations
+# ============================================================
+
+SortUsingDeclarations: false

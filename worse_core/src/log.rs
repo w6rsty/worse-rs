@@ -355,7 +355,7 @@ impl LogConfig {
     /// buffer, no panic hook. Spawns no threads and creates no directories, so
     /// it is safe in a binary that exits via [`std::process::exit`].
     #[allow(dead_code)]
-    pub fn cli() -> Self {
+    pub fn cli_preset() -> Self {
         Self {
             filter: default_filter(),
             write_console_config: Some(WriteConsoleConfig {
@@ -374,11 +374,11 @@ impl LogConfig {
     /// Engine preset: async console, rolling file, crash channel, ring buffer
     /// and panic hook, all on.
     #[allow(dead_code)]
-    pub fn engine() -> Self {
+    pub fn engine_preset() -> Self {
         Self {
             filter: default_filter(),
             write_console_config: Some(WriteConsoleConfig::default()),
-            write_file_config: Some(WriteFileConfig::default()),
+            write_file_config: None,
             ring_capacity: 512,
             panic_hook: true,
         }

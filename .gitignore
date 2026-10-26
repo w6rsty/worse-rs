@@ -1,1 +1,8 @@
+/.vscode
 /target
+/logs
+
+.DS_Store
+*.ini
+*.spv
+*.spv-asm
