@@ -1,11 +1,11 @@
 use arrayvec::ArrayVec;
 use ash::vk;
-use std::{cell::RefCell, marker::PhantomData, sync::Arc};
+use std::{cell::RefCell, marker::PhantomData, ops::Range, sync::Arc};
 use thiserror::Error;
 use tracing::debug;
 
 use crate::core::{
-    AccessFlags, RootArgument, StageFlags,
+    AccessFlags, RootArgument, StageFlags, Texture, TextureAspect,
     device::DeviceShared,
     pipeline::{DepthStencilState, Pipeline, RenderingDesc, Scissor, Viewport},
     sync::{self, SyncPoint},
@@ -343,6 +343,37 @@ impl CmdEncoder<'_, state::Active> {
                 device.cmd_set_stencil_reference(buffer, vk::StencilFaceFlags::BACK, stencil.back.reference);
             }
         }
+    }
+
+    pub fn texture_init_barrier(
+        &self,
+        texture: &Texture,
+        aspect: TextureAspect,
+        mip_range: Range<u32>,
+        layer_range: Range<u32>,
+    ) {
+        let barrier_infos = [vk::ImageMemoryBarrier2::default()
+            .image(texture.handle)
+            .src_stage_mask(vk::PipelineStageFlags2::NONE)
+            .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+            .dst_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(aspect.to_vk())
+                    .base_mip_level(mip_range.start)
+                    .level_count(mip_range.end - mip_range.start)
+                    .base_array_layer(layer_range.start)
+                    .layer_count(layer_range.end - layer_range.start),
+            )];
+        let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&barrier_infos);
+
+        let device = &self.inner.queue.device.handle;
+        let buffer = self.inner.buffer;
+        unsafe { device.cmd_pipeline_barrier2(buffer, &dependency_info) };
     }
 
     pub fn barrier(

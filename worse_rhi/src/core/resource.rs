@@ -507,7 +507,7 @@ fn convert_texture_view_desc<'desc>(desc: &'desc TextureViewDesc) -> vk::ImageVi
         )
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TargetView {
     pub(crate) handle: vk::ImageView,
     pub format: PixelFormat,
