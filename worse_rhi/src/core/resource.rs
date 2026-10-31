@@ -9,17 +9,11 @@ use crate::core::{
     utils::{VulkanCheck, align_up, create_object_debug_name, format_bytes, get_mip_extent_2d},
 };
 
-pub struct MemoryRange {
-    pub mapped_base: NonNull<u8>,
-    pub device_base: u64,
-    pub size: u64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryDomain {
     DeviceLocal,
     HostVisible,
-    Readback,
+    Staging,
 }
 
 /// vk::MemoryPropertyFlags combination
@@ -45,7 +39,7 @@ impl MemoryDomain {
                 preferred: vk::MemoryPropertyFlags::empty(),
                 avoided: vk::MemoryPropertyFlags::empty(),
             },
-            Self::Readback => MemoryProperties {
+            Self::Staging => MemoryProperties {
                 required: vk::MemoryPropertyFlags::HOST_VISIBLE
                     | vk::MemoryPropertyFlags::HOST_CACHED
                     | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -318,22 +312,31 @@ impl Device {
 }
 
 impl Buffer {
-    pub fn address_at(&self, offset: u64) -> u64 {
-        self.device_address + offset
+    pub fn get_ref<T>(&self) -> &T {
+        assert!(self.mapped_ptr.is_some());
+        let type_size = core::mem::size_of::<T>();
+        assert_eq!(type_size, self.size as usize);
+        unsafe { &*(self.mapped_ptr.unwrap().as_ptr() as *const T) }
     }
 
-    // /// SAFTY: Access of offset pointer can not exceed bound
-    // unsafe fn ptr_at(&self, offset: u64) -> Result<NonNull<u8>, BufferError> {
-    //     if offset > self.size {
-    //         return Err(BufferError::AccessOutOfBound);
-    //     }
-    //     let base = self.mapped_ptr.ok_or(BufferError::NoDeviceAddress)?;
-    //     Ok(unsafe { base.byte_add(usize::try_from(offset).unwrap()) })
-    // }
+    pub fn get_mut<T>(&mut self) -> &mut T {
+        assert!(self.mapped_ptr.is_some());
+        let type_size = core::mem::size_of::<T>();
+        assert_eq!(type_size, self.size as usize);
+        unsafe { &mut *(self.mapped_ptr.unwrap().as_ptr() as *mut T) }
+    }
+}
+
+pub struct BufferSlice {
+    pub mapped_base: NonNull<u8>,
+    pub device_base: u64,
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum TextureError {
+    #[error("memory block error: {0}")]
+    MemoryBlock(#[from] MemoryBlockError),
     #[error("placement of buffer is out of bound")]
     PlacementOutOfBound,
     #[error("access of buffer is out of bound")]
@@ -423,6 +426,38 @@ impl Device {
         create_object_debug_name(device, texture, name);
         let requirements = unsafe { device.handle.get_image_memory_requirements(texture) };
         (texture, requirements)
+    }
+
+    pub fn create_texture_dedicated(
+        &self,
+        desc: TextureDesc,
+        name: impl AsRef<str>,
+    ) -> Result<(Texture, MemoryBlock), TextureError> {
+        let (texture, memory_requirements) = self.create_texture_internal(desc, &name);
+        let allocation_size = memory_requirements.size;
+        let block = self.create_memory_block(
+            MemoryDomain::DeviceLocal,
+            allocation_size,
+            memory_requirements.memory_type_bits,
+            &name,
+        )?;
+
+        let device = &self.shared;
+        unsafe { device.handle.bind_image_memory(texture, block.memory, 0) }.check(device);
+
+        Ok((
+            Texture {
+                handle: texture,
+                dimension: desc.dimension,
+                format: desc.format,
+                extent: desc.extent,
+                mip_levels: desc.mip_levels,
+                array_layers: desc.array_layers,
+                samples: desc.samples,
+                usage: desc.usage,
+            },
+            block,
+        ))
     }
 
     pub fn create_texture_placed(
@@ -558,7 +593,7 @@ pub struct DescriptorHeap {
     pub kind: DescriptorHeapKind,
     buffer: Buffer,
     memory: MemoryBlock,
-    range: MemoryRange,
+    range: BufferSlice,
 }
 
 impl Device {
@@ -617,7 +652,7 @@ impl Device {
             kind,
             buffer,
             memory,
-            range: MemoryRange {
+            range: BufferSlice {
                 mapped_base,
                 device_base: payload_base,
                 size: payload_size,
@@ -663,8 +698,3 @@ impl DescriptorHeap {
 }
 
 pub trait RootArgument {}
-
-pub struct NullRoot {}
-impl RootArgument for NullRoot {}
-
-pub const NULL_ROOT: NullRoot = NullRoot {};

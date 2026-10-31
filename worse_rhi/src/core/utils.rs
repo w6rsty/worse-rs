@@ -257,11 +257,3 @@ pub fn get_mip_extent_3d(extent0: Extent3D, mip_level: u32) -> Extent3D {
         depth: 1.max(extent0.depth >> mip_level),
     }
 }
-
-pub(crate) mod state {
-    pub struct Initial;
-    pub struct Available;
-    pub struct Active;
-    pub struct Pending;
-    pub struct Finished;
-}

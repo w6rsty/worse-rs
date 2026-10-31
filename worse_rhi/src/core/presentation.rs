@@ -11,7 +11,7 @@ use crate::core::{
     instance::InstanceShared,
     sync::SyncPoint,
     types::*,
-    utils::{VulkanCheck, create_object_debug_name, state},
+    utils::{VulkanCheck, create_object_debug_name},
 };
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 4;

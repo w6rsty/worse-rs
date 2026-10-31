@@ -96,6 +96,7 @@ pub(crate) struct DeviceExtensions {
     pub(crate) swapchain: Option<khr::swapchain::Device>,
     pub(crate) device_fault: ext::device_fault::Device,
     pub(crate) descriptor_heap: ext::descriptor_heap::Device,
+    pub(crate) device_address_commands: khr::device_address_commands::Device,
     pub(crate) mesh_shader: ext::mesh_shader::Device,
 }
 
@@ -264,6 +265,7 @@ impl DeviceShared {
             },
             device_fault: ext::device_fault::Device::load(ash_instance, &device),
             descriptor_heap: ext::descriptor_heap::Device::load(ash_instance, &device),
+            device_address_commands: khr::device_address_commands::Device::load(ash_instance, &device),
             mesh_shader: ext::mesh_shader::Device::load(ash_instance, &device),
         };
 

@@ -5,14 +5,13 @@ use thiserror::Error;
 use tracing::debug;
 
 use crate::core::{
-    AccessFlags, RootArgument, StageFlags, Texture, TextureAspect,
+    AccessFlags, Buffer, IndexKind, StageFlags, Texture, TextureAspect,
     device::DeviceShared,
     pipeline::{DepthStencilState, Pipeline, RenderingDesc, Scissor, Viewport},
+    resource::BufferSlice,
     sync::{self, SyncPoint},
-    utils::{
-        VulkanCheck, create_object_debug_name,
-        state::{self, Initial},
-    },
+    types::*,
+    utils::{VulkanCheck, create_object_debug_name},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +66,7 @@ struct CmdFrameInner<'q> {
     finish_point: RefCell<Option<SyncPoint>>,
 }
 
-impl<'q> CmdFrame<'q, Initial> {
+impl<'q> CmdFrame<'q, state::Initial> {
     pub fn new(queue: &'q CmdQueue, name: impl AsRef<str>) -> CmdFrame<'q, state::Pending> {
         let device = &queue.device;
 
@@ -395,24 +394,17 @@ impl CmdEncoder<'_, state::Active> {
         unsafe { device.cmd_pipeline_barrier2(buffer, &dependency_info) };
     }
 
-    fn emit_root_argument<T: RootArgument>(&self, root: &T) {
-        let root_size = std::mem::size_of::<T>();
-        if root_size == 0 {
-            return;
-        }
-
-        let root_address = unsafe { std::slice::from_raw_parts(root as *const T as *const u8, root_size) };
+    pub fn emit_root(&self, root: &Buffer) {
+        let address_bytes = root.device_address.to_ne_bytes();
         let root_info =
-            vk::PushDataInfoEXT::default().data(vk::HostAddressRangeConstEXT::default().address(root_address));
+            vk::PushDataInfoEXT::default().data(vk::HostAddressRangeConstEXT::default().address(&address_bytes));
 
         let device = &self.inner.queue.device;
         let buffer = self.inner.buffer;
         unsafe { device.extensions.descriptor_heap.cmd_push_data(buffer, &root_info) };
     }
 
-    pub fn dispatch<T: RootArgument>(&self, root: &T, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
-        self.emit_root_argument(root);
-
+    pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
         unsafe { device.cmd_dispatch(buffer, group_count_x, group_count_y, group_count_z) };
@@ -486,6 +478,47 @@ impl CmdEncoder<'_, state::Active> {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
         unsafe { device.cmd_draw(buffer, vertex_count, instance_count, first_vertex, first_instance) };
+    }
+
+    pub fn draw_indexed(
+        &self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+        indices: BufferSlice,
+        kind: IndexKind,
+    ) {
+        let device = &self.inner.queue.device.handle;
+        let buffer = self.inner.buffer;
+        let extension = &self.inner.queue.device.extensions.device_address_commands;
+
+        let bind_info = vk::BindIndexBuffer3InfoKHR::default()
+            .address_range(
+                vk::DeviceAddressRangeKHR::default()
+                    .address(indices.device_base)
+                    .size(indices.size),
+            )
+            .address_flags(vk::AddressCommandFlagsKHR::FULLY_BOUND)
+            .index_type(kind.to_vk());
+        unsafe { extension.cmd_bind_index_buffer3(buffer, &bind_info) };
+        unsafe {
+            device.cmd_draw_indexed(
+                buffer,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            )
+        };
+    }
+
+    pub fn draw_mesh(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        let buffer = self.inner.buffer;
+        let extension = &self.inner.queue.device.extensions.mesh_shader;
+        unsafe { extension.cmd_draw_mesh_tasks(buffer, group_count_x, group_count_y, group_count_z) };
     }
 }
 

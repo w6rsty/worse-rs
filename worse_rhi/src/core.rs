@@ -22,8 +22,8 @@ pub use crate::core::presentation::{
     PresentMode, Swapchain, SwapchainAlphaComposite, SwapchainCreateError, SwapchainCreateOptions, SwapchainFrame,
 };
 pub use crate::core::resource::{
-    Buffer, BufferDesc, BufferError, DescriptorHeapKind, MemoryBlock, MemoryBlockError, MemoryDomain, NULL_ROOT,
-    RootArgument, TargetView, Texture, TextureDesc, TextureError, TextureViewDesc,
+    Buffer, BufferDesc, BufferError, DescriptorHeapKind, MemoryBlock, MemoryBlockError, MemoryDomain, RootArgument,
+    TargetView, Texture, TextureDesc, TextureError, TextureViewDesc,
 };
 pub use crate::core::sync::{SyncPoint, Timeline};
 pub use crate::core::types::*;

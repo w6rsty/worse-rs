@@ -24,6 +24,7 @@ worse_rhi = { path = "worse_rhi", default-features = false }
 bitflags = { workspace = true }
 glam = { workspace = true }
 mint = { workspace = true }
+rand = "0.9"
 worse_core = { workspace = true }
 worse_rhi = { workspace = true, features = ["vulkan"] }
 arrayvec = { workspace = true }

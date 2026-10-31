@@ -467,6 +467,15 @@ pub enum IndexKind {
     UInt32,
 }
 
+impl IndexKind {
+    pub(crate) fn to_vk(self) -> vk::IndexType {
+        match self {
+            Self::UInt16 => vk::IndexType::UINT16,
+            Self::UInt32 => vk::IndexType::UINT32,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoadOp {
     Load,
@@ -758,4 +767,12 @@ impl TextureAspect {
             Self::Stencil => vk::ImageAspectFlags::STENCIL,
         }
     }
+}
+
+pub mod state {
+    pub struct Initial;
+    pub struct Available;
+    pub struct Active;
+    pub struct Pending;
+    pub struct Finished;
 }
