@@ -1,5 +1,5 @@
 use ash::vk::{self, TaggedStructure};
-use std::{ptr::NonNull, range::Range, sync::Arc};
+use std::{marker::PhantomData, ptr::NonNull, range::Range, sync::Arc};
 use thiserror::Error;
 use tracing::debug;
 
@@ -65,7 +65,7 @@ pub enum MemoryBlockError {
     MapMemoryReturnedNullPointer,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct MemoryBlock {
     pub(crate) memory: vk::DeviceMemory,
     pub size: u64,
@@ -188,15 +188,16 @@ pub enum BufferError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BufferDesc {
-    pub size: u64,
+    pub size: usize,
     pub usage: BufferUsageFlags,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Buffer {
     pub(crate) handle: vk::Buffer,
-    pub size: u64,
+    pub size: usize,
     pub device_address: u64,
-    pub mapped_ptr: Option<NonNull<u8>>,
+    pub ptr: Option<NonNull<u8>>,
 }
 
 impl Device {
@@ -209,7 +210,7 @@ impl Device {
         };
 
         vk::BufferCreateInfo::default()
-            .size(desc.size)
+            .size(desc.size as u64)
             .usage(desc.usage.to_vk())
             .sharing_mode(sharing_mode)
             .queue_family_indices(&indices)
@@ -262,7 +263,7 @@ impl Device {
             handle: buffer,
             size: desc.size,
             device_address,
-            mapped_ptr: block.mapped_ptr.clone(),
+            ptr: block.mapped_ptr.clone(),
         };
 
         Ok((buffer, block))
@@ -302,7 +303,7 @@ impl Device {
             handle: buffer,
             size: desc.size,
             device_address,
-            mapped_ptr,
+            ptr: mapped_ptr,
         })
     }
 
@@ -311,26 +312,147 @@ impl Device {
     }
 }
 
-impl Buffer {
-    pub fn get_ref<T>(&self) -> &T {
-        assert!(self.mapped_ptr.is_some());
-        let type_size = core::mem::size_of::<T>();
-        assert_eq!(type_size, self.size as usize);
-        unsafe { &*(self.mapped_ptr.unwrap().as_ptr() as *const T) }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BufferSlice<'a, T: bytemuck::Pod> {
+    pub ptr: Option<NonNull<u8>>,
+    pub device_address: u64,
+    pub len: usize,
+    _marker: PhantomData<&'a T>,
+}
+
+impl<'a, T: bytemuck::Pod> BufferSlice<'a, T> {
+    pub fn as_ref(&self) -> &T {
+        let ptr = self.ptr.expect("not mapped");
+        let type_size = std::mem::size_of::<T>();
+
+        let current_bytes = self.len * type_size;
+        assert!(
+            current_bytes >= type_size,
+            "BufferSlice size ({}) is smaller than type T size ({})",
+            current_bytes,
+            type_size
+        );
+
+        unsafe { &*(ptr.as_ptr().cast::<T>()) }
     }
 
-    pub fn get_mut<T>(&mut self) -> &mut T {
-        assert!(self.mapped_ptr.is_some());
-        let type_size = core::mem::size_of::<T>();
-        assert_eq!(type_size, self.size as usize);
-        unsafe { &mut *(self.mapped_ptr.unwrap().as_ptr() as *mut T) }
+    pub fn as_mut(&mut self) -> &mut T {
+        let ptr = self.ptr.expect("not mapped");
+        let type_size = std::mem::size_of::<T>();
+
+        let current_bytes = self.len * type_size;
+        assert!(
+            current_bytes >= type_size,
+            "BufferSlice size ({}) is smaller than type T size ({})",
+            current_bytes,
+            type_size
+        );
+
+        unsafe { &mut *(ptr.as_ptr().cast::<T>()) }
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        let ptr = self.ptr.expect("not mapped");
+        unsafe { std::slice::from_raw_parts(ptr.as_ptr().cast::<T>(), self.len) }
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        let ptr = self.ptr.expect("not mapped");
+        unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr().cast::<T>(), self.len) }
     }
 }
 
-pub struct BufferSlice {
-    pub mapped_base: NonNull<u8>,
-    pub device_base: u64,
-    pub size: u64,
+impl Buffer {
+    pub fn as_ref<T: bytemuck::Pod>(&self) -> &T {
+        let ptr = self.ptr.expect("not mapped");
+        let type_size = std::mem::size_of::<T>();
+        let type_align = std::mem::align_of::<T>();
+
+        assert!(
+            self.size >= type_size,
+            "Buffer size ({}) is smaller than type T size ({})",
+            self.size,
+            type_size
+        );
+
+        let base_addr = ptr.as_ptr() as usize;
+        assert!(
+            base_addr % type_align == 0,
+            "Memory address {:#x} is not aligned for type T (required align: {})",
+            base_addr,
+            type_align
+        );
+
+        unsafe { &*(ptr.as_ptr().cast::<T>()) }
+    }
+
+    pub fn as_mut<T: bytemuck::Pod>(&mut self) -> &mut T {
+        let ptr = self.ptr.expect("not mapped");
+        let type_size = std::mem::size_of::<T>();
+        let type_align = std::mem::align_of::<T>();
+
+        assert!(
+            self.size >= type_size,
+            "Buffer size ({}) is smaller than type T size ({})",
+            self.size,
+            type_size
+        );
+
+        let base_addr = ptr.as_ptr() as usize;
+        assert!(
+            base_addr % type_align == 0,
+            "Memory address {:#x} is not aligned for type T (required align: {})",
+            base_addr,
+            type_align
+        );
+
+        unsafe { &mut *(ptr.as_ptr().cast::<T>()) }
+    }
+
+    pub fn as_slice<T: bytemuck::Pod>(&self) -> &[T] {
+        let ptr = self.ptr.expect("not mapped");
+        let count = self.size as usize / std::mem::size_of::<T>();
+        unsafe { std::slice::from_raw_parts(ptr.as_ptr().cast::<T>(), count) }
+    }
+
+    pub fn as_slice_mut<T: bytemuck::Pod>(&mut self) -> &mut [T] {
+        let ptr = self.ptr.expect("not mapped");
+        let count = self.size as usize / std::mem::size_of::<T>();
+        unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr().cast::<T>(), count) }
+    }
+
+    pub fn slice<T: bytemuck::Pod>(&self, byte_offset: usize, elem_len: usize) -> BufferSlice<'_, T> {
+        let elem_size = std::mem::size_of::<T>();
+        let elem_alignment = std::mem::align_of::<T>();
+
+        let required_bytes = byte_offset + (elem_size * elem_len);
+        assert!(
+            required_bytes <= self.size,
+            "BufferSlice out of bounds: buffer size {}, required {}",
+            self.size,
+            required_bytes
+        );
+
+        let ptr = self.ptr.and_then(|ptr| {
+            let base_addr = ptr.as_ptr() as usize;
+            let offset_addr = base_addr + byte_offset;
+            assert!(
+                offset_addr % elem_alignment == 0,
+                "Memory address is not aligned for type T (address: {:#x}, required align: {})",
+                offset_addr,
+                elem_alignment
+            );
+            Some(unsafe { ptr.byte_add(byte_offset) })
+        });
+        let device_address = self.device_address + byte_offset as u64;
+
+        BufferSlice {
+            ptr,
+            device_address,
+            len: elem_len,
+            _marker: PhantomData,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -354,6 +476,67 @@ pub struct TextureDesc {
     pub array_layers: u32,
     pub samples: SampleCount,
     pub usage: TextureUsageFlags,
+    pub flags: TextureCreateFlags,
+}
+
+impl TextureDesc {
+    pub fn default() -> Self {
+        Self {
+            dimension: TextureDimension::Dimension2D,
+            format: PixelFormat::Undefined,
+            extent: Extent3D::default(),
+            mip_levels: 1,
+            array_layers: 1,
+            samples: SampleCount::Count1,
+            usage: TextureUsageFlags::empty(),
+            flags: TextureCreateFlags::empty(),
+        }
+    }
+
+    pub fn new_default_2d(width: u32, height: u32) -> Self {
+        Self::default()
+            .dimension(TextureDimension::Dimension2D)
+            .extent(Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+    }
+
+    pub fn new_default_depth(width: u32, height: u32) -> Self {
+        Self::new_default_2d(width, height)
+            .format(PixelFormat::D32Float)
+            .usage(TextureUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+    }
+
+    pub fn dimension(mut self, dimension: TextureDimension) -> Self {
+        self.dimension = dimension;
+        self
+    }
+    pub fn format(mut self, format: PixelFormat) -> Self {
+        self.format = format;
+        self
+    }
+    pub fn extent(mut self, extent: Extent3D) -> Self {
+        self.extent = extent;
+        self
+    }
+    pub fn mip_levels(mut self, mip_levels: u32) -> Self {
+        self.mip_levels = mip_levels;
+        self
+    }
+    pub fn array_layers(mut self, array_layers: u32) -> Self {
+        self.array_layers = array_layers;
+        self
+    }
+    pub fn samples(mut self, samples: SampleCount) -> Self {
+        self.samples = samples;
+        self
+    }
+    pub fn usage(mut self, usage: TextureUsageFlags) -> Self {
+        self.usage = usage;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -371,15 +554,24 @@ pub struct Texture {
 impl Device {
     fn convert_texture_desc<'a>(&'a self, desc: &TextureDesc) -> vk::ImageCreateInfo<'a> {
         let indices = &self.shared.queue_indices.flat;
-        let sharing_mode = if indices.len() > 1 && desc.usage.contains(TextureUsageFlags::SHARED) {
+        let sharing_mode = if indices.len() > 1 && desc.flags.contains(TextureCreateFlags::SHARED) {
             vk::SharingMode::CONCURRENT
         } else {
             vk::SharingMode::EXCLUSIVE
         };
 
         let mut texture_flag = vk::ImageCreateFlags::empty();
-        if desc.usage.contains(TextureUsageFlags::ALIAS) {
+        if desc.flags.contains(TextureCreateFlags::ALIAS) {
             texture_flag |= vk::ImageCreateFlags::ALIAS;
+        }
+        if desc.flags.contains(TextureCreateFlags::SPARSE) {
+            texture_flag |= vk::ImageCreateFlags::SPARSE_BINDING | vk::ImageCreateFlags::SPARSE_RESIDENCY
+        }
+        if desc
+            .flags
+            .contains(TextureCreateFlags::ALIAS | TextureCreateFlags::SPARSE)
+        {
+            texture_flag |= vk::ImageCreateFlags::SPARSE_ALIASED;
         }
 
         vk::ImageCreateInfo::default()
@@ -589,17 +781,17 @@ pub enum DescriptorHeapKind {
 
 pub struct DescriptorHeap {
     device: Arc<DeviceShared>,
-    pub capacity: u64,
+    pub capacity: usize,
     pub kind: DescriptorHeapKind,
     buffer: Buffer,
     memory: MemoryBlock,
-    range: BufferSlice,
+    payload_offset: usize,
 }
 
 impl Device {
     pub fn create_descriptor_heap(
         &self,
-        capacity: u64,
+        capacity: usize,
         kind: DescriptorHeapKind,
         name: impl AsRef<str>,
     ) -> Result<DescriptorHeap, DescriptorHeapError> {
@@ -611,14 +803,14 @@ impl Device {
                 heap_properties.image_descriptor_alignment,
                 heap_properties.resource_heap_alignment,
                 heap_properties.min_resource_heap_reserved_range,
-                capacity * heap_properties.image_descriptor_size,
+                capacity as u64 * heap_properties.image_descriptor_size,
             )
         } else {
             (
                 heap_properties.sampler_descriptor_alignment,
                 heap_properties.sampler_heap_alignment,
                 heap_properties.min_sampler_heap_reserved_range,
-                capacity * heap_properties.sampler_descriptor_size,
+                capacity as u64 * heap_properties.sampler_descriptor_size,
             )
         };
         let reserved_offset = align_up(descriptor_size, reserved_aligment);
@@ -630,21 +822,14 @@ impl Device {
         let (buffer, memory) = self.create_buffer_dedicated(
             MemoryDomain::HostVisible,
             BufferDesc {
-                size: allocation_size,
+                size: allocation_size as usize,
                 usage: BufferUsageFlags::SHADER_DEVICE_ADDRESS | BufferUsageFlags::DESCRIPTOR_HEAP,
             },
             &name,
         )?;
 
         let payload_base = align_up(buffer.device_address, allocation_alignment);
-        let payload_offset = payload_base - buffer.device_address;
-
-        let mapped_base = unsafe {
-            memory
-                .mapped_ptr
-                .unwrap()
-                .byte_add(usize::try_from(payload_offset).unwrap())
-        };
+        let payload_offset = (payload_base - buffer.device_address) as usize;
 
         Ok(DescriptorHeap {
             device: self.shared.clone(),
@@ -652,11 +837,7 @@ impl Device {
             kind,
             buffer,
             memory,
-            range: BufferSlice {
-                mapped_base,
-                device_base: payload_base,
-                size: payload_size,
-            },
+            payload_offset,
         })
     }
 
@@ -688,13 +869,11 @@ impl DescriptorHeap {
             .data(resourece_descriptor_info)];
 
         let descriptor_range = unsafe {
-            let shifted = self.range.mapped_base.as_ptr().add(index * descriptor_size);
-            core::slice::from_raw_parts_mut(shifted, descriptor_size)
+            let ptr = self.buffer.ptr.unwrap().add(index * descriptor_size).as_ptr();
+            core::slice::from_raw_parts_mut(ptr, descriptor_size)
         };
         let descriptors = [vk::HostAddressRangeEXT::default().address(descriptor_range)];
 
         unsafe { fp.write_resource_descriptors(&resources, &descriptors) }.check(device);
     }
 }
-
-pub trait RootArgument {}

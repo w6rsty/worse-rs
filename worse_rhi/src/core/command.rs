@@ -1,11 +1,11 @@
 use arrayvec::ArrayVec;
 use ash::vk;
-use std::{cell::RefCell, marker::PhantomData, ops::Range, sync::Arc};
+use std::{cell::RefCell, marker::PhantomData, sync::Arc};
 use thiserror::Error;
 use tracing::debug;
 
 use crate::core::{
-    AccessFlags, Buffer, IndexKind, StageFlags, Texture, TextureAspect,
+    AccessFlags, StageFlags, Texture, TextureAspect,
     device::DeviceShared,
     pipeline::{DepthStencilState, Pipeline, RenderingDesc, Scissor, Viewport},
     resource::BufferSlice,
@@ -344,13 +344,8 @@ impl CmdEncoder<'_, state::Active> {
         }
     }
 
-    pub fn texture_init_barrier(
-        &self,
-        texture: &Texture,
-        aspect: TextureAspect,
-        mip_range: Range<u32>,
-        layer_range: Range<u32>,
-    ) {
+    /// Translate texture layout from undefined to general
+    pub fn unifiy_texture_layout(&self, texture: &Texture, aspect: TextureAspect) {
         let barrier_infos = [vk::ImageMemoryBarrier2::default()
             .image(texture.handle)
             .src_stage_mask(vk::PipelineStageFlags2::NONE)
@@ -363,10 +358,10 @@ impl CmdEncoder<'_, state::Active> {
             .subresource_range(
                 vk::ImageSubresourceRange::default()
                     .aspect_mask(aspect.to_vk())
-                    .base_mip_level(mip_range.start)
-                    .level_count(mip_range.end - mip_range.start)
-                    .base_array_layer(layer_range.start)
-                    .layer_count(layer_range.end - layer_range.start),
+                    .base_mip_level(0)
+                    .level_count(texture.mip_levels)
+                    .base_array_layer(0)
+                    .layer_count(texture.array_layers),
             )];
         let dependency_info = vk::DependencyInfo::default().image_memory_barriers(&barrier_infos);
 
@@ -394,7 +389,7 @@ impl CmdEncoder<'_, state::Active> {
         unsafe { device.cmd_pipeline_barrier2(buffer, &dependency_info) };
     }
 
-    pub fn emit_root(&self, root: &Buffer) {
+    pub fn emit_root<T: bytemuck::Pod>(&self, root: &BufferSlice<'_, T>) {
         let address_bytes = root.device_address.to_ne_bytes();
         let root_info =
             vk::PushDataInfoEXT::default().data(vk::HostAddressRangeConstEXT::default().address(&address_bytes));
@@ -480,15 +475,14 @@ impl CmdEncoder<'_, state::Active> {
         unsafe { device.cmd_draw(buffer, vertex_count, instance_count, first_vertex, first_instance) };
     }
 
-    pub fn draw_indexed(
+    pub fn draw_indexed<'a, T: IndexType>(
         &self,
         index_count: u32,
         instance_count: u32,
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-        indices: BufferSlice,
-        kind: IndexKind,
+        indices: BufferSlice<'a, T>,
     ) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
@@ -497,11 +491,11 @@ impl CmdEncoder<'_, state::Active> {
         let bind_info = vk::BindIndexBuffer3InfoKHR::default()
             .address_range(
                 vk::DeviceAddressRangeKHR::default()
-                    .address(indices.device_base)
-                    .size(indices.size),
+                    .address(indices.device_address)
+                    .size((indices.len * std::mem::size_of::<T>()) as u64),
             )
             .address_flags(vk::AddressCommandFlagsKHR::FULLY_BOUND)
-            .index_type(kind.to_vk());
+            .index_type(T::VK_TYPE);
         unsafe { extension.cmd_bind_index_buffer3(buffer, &bind_info) };
         unsafe {
             device.cmd_draw_indexed(

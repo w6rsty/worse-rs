@@ -1,38 +1,18 @@
+use bytemuck::{Pod, Zeroable};
 use glam::{Quat, Vec3};
 use rand::Rng;
-use std::{fs, io, ops::Range, path::Path, sync::Arc, time};
+use std::{cell::RefCell, fs, io, path::Path, sync::Arc, time};
 use worse_core::{
     log::{self, LogConfig, error},
     window::{Event, Window, WindowDesc},
 };
-use worse_rhi::core as rhi;
+use worse_rhi::core::{self as rhi, BufferSlice};
 
-const WIDTH: u32 = 900;
-const HEIGHT: u32 = 600;
+const WIDTH: u32 = 1920;
+const HEIGHT: u32 = 1080;
 const SPWAPCHAIN_IMAGE_COUNT: u32 = 2;
 const FRAMES_IN_FLIGHT: u32 = 1;
-
 const PARTICLE_COUNTS: usize = 1024;
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct Particle {
-    position: mint::Vector3<f32>,
-    velocity: mint::Vector3<f32>,
-}
-
-#[repr(C)]
-struct SimulationRoot {
-    particles: u64,
-    delta_seconds: f32,
-}
-
-#[repr(C)]
-struct BasePassRoot {
-    view_projection: mint::ColumnMatrix4<f32>,
-    orientation: mint::Quaternion<f32>,
-    particles: u64,
-    _padding: [u32; 2],
-}
 
 fn main() {
     let mut log_cfg = LogConfig::engine_preset();
@@ -42,27 +22,16 @@ fn main() {
 
     let (_instance, device) = make_context(window.clone());
 
-    let (mut simulation_root, mut base_pass_root) = make_roots(&device);
-    let simulation_buffer = make_simulation_buffer(&device);
+    let root_allocator = RootBumpAllocator::new(512, &device);
 
+    let simulation_buffer = make_simulation_buffer(&device);
     let simulation_pipeline = make_simulation_pipeline(&device);
+
     let base_pass_pipeline = make_base_pass_pipeline(&device);
 
-    let depth_desc = rhi::TextureDesc {
-        dimension: rhi::TextureDimension::Dimension2D,
-        format: rhi::PixelFormat::D32Float,
-        extent: rhi::Extent3D {
-            width: WIDTH,
-            height: HEIGHT,
-            depth: 1,
-        },
-        mip_levels: 1,
-        array_layers: 1,
-        samples: rhi::SampleCount::Count1,
-        usage: rhi::TextureUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-    };
-
-    let depth_texture = device.create_texture_dedicated(depth_desc, "depth").unwrap();
+    let depth_texture = device
+        .create_texture_dedicated(rhi::TextureDesc::new_default_depth(WIDTH, HEIGHT), "depth")
+        .unwrap();
     let depth_texture_view = device.create_target_view(
         &depth_texture.0,
         rhi::TextureViewDesc::new_default_range(&depth_texture.0, rhi::TextureAspect::Depth),
@@ -78,19 +47,13 @@ fn main() {
     let mut cmd_frame = rhi::CmdFrame::new(&main_queue, "cmd_frame");
 
     let mut previous_time = time::Instant::now();
-    let simulation_start = time::Instant::now();
     let mut last_finish_value: u64 = 0;
     let timeline = rhi::Timeline::new(&device, last_finish_value, "timeline");
 
     {
         let prepare_frame = cmd_frame.wait_and_reset().begin();
         let enc = prepare_frame.bump_encoder();
-        enc.texture_init_barrier(
-            &depth_texture.0,
-            rhi::TextureAspect::Depth,
-            Range { start: 0, end: 1 },
-            Range { start: 0, end: 1 },
-        );
+        enc.unifiy_texture_layout(&depth_texture.0, rhi::TextureAspect::Depth);
 
         last_finish_value += 1;
         let prepare_finish_point = timeline.sync_point(last_finish_value, rhi::StageFlags::ALL_COMMANDS);
@@ -123,6 +86,8 @@ fn main() {
             }
         };
 
+        root_allocator.reset();
+
         let current_time = time::Instant::now();
         let delta_seconds = current_time.duration_since(previous_time).as_secs_f32();
         previous_time = current_time;
@@ -140,7 +105,7 @@ fn main() {
         simulation(
             &enc,
             &simulation_pipeline,
-            &mut simulation_root.0,
+            &root_allocator,
             &simulation_buffer.0,
             delta_seconds,
         );
@@ -156,9 +121,8 @@ fn main() {
             window_extent,
             rhi::TargetView::from_frame(&swapchain_frame),
             depth_texture_view,
-            &mut base_pass_root.0,
+            &root_allocator,
             &simulation_buffer.0,
-            simulation_start.elapsed().as_secs_f32(),
         );
         enc.swapchain_frame_present_barrier(&swapchain_frame);
 
@@ -183,10 +147,6 @@ fn main() {
     device.destroy_pipeline(simulation_pipeline);
     device.destroy_buffer(simulation_buffer.0);
     device.destroy_memory_block(simulation_buffer.1);
-    device.destroy_buffer(simulation_root.0);
-    device.destroy_memory_block(simulation_root.1);
-    device.destroy_buffer(base_pass_root.0);
-    device.destroy_memory_block(base_pass_root.1);
     device.destory_target_view(depth_texture_view);
     device.destory_texture(depth_texture.0);
     device.destroy_memory_block(depth_texture.1);
@@ -247,19 +207,18 @@ fn make_base_pass_pipeline(device: &rhi::Device) -> rhi::Pipeline {
 fn simulation(
     enc: &rhi::CmdEncoder<'_, rhi::state::Active>,
     pipeline: &rhi::Pipeline,
-    root: &mut rhi::Buffer,
+    root_allocator: &RootBumpAllocator,
     buffer: &rhi::Buffer,
     delta_seconds: f32,
 ) {
     enc.bind_pipeline(pipeline);
-
-    {
-        *root.get_mut::<SimulationRoot>() = SimulationRoot {
-            particles: buffer.device_address,
-            delta_seconds,
-        };
-    }
-    enc.emit_root(root);
+    let mut root = root_allocator.allocate();
+    *root.as_mut() = SimulationRoot {
+        particles: buffer.device_address,
+        delta_seconds,
+        _pad: 0.0,
+    };
+    enc.emit_root(&root);
     enc.dispatch(1, 1, 1);
 }
 
@@ -269,9 +228,8 @@ fn base_pass(
     extent: rhi::Extent2D,
     color: rhi::TargetView,
     depth: rhi::TargetView,
-    root: &mut rhi::Buffer,
+    root_allocator: &RootBumpAllocator,
     simulation_buffer: &rhi::Buffer,
-    elapsed_seconds: f32,
 ) {
     enc.begin_rendering(rhi::RenderingDesc {
         area: rhi::Rect2D {
@@ -296,31 +254,16 @@ fn base_pass(
     let aspect_ratio = extent.width.max(1) as f32 / extent.height.max(1) as f32;
     let view = glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, 0.0, 4.0), Vec3::ZERO, Vec3::Y);
     let projection = glam::camera::rh::proj::vulkan::perspective(60.0_f32.to_radians(), aspect_ratio, 0.1, 100.0);
-    let orientation = Quat::from_rotation_y(elapsed_seconds * 0.3) * Quat::from_rotation_x(elapsed_seconds * 0.17);
-    {
-        let view_projection = (projection * view).to_cols_array_2d();
-
-        *root.get_mut::<BasePassRoot>() = BasePassRoot {
-            view_projection: mint::ColumnMatrix4 {
-                x: mint::Vector4::from(view_projection[0]),
-                y: mint::Vector4::from(view_projection[1]),
-                z: mint::Vector4::from(view_projection[2]),
-                w: mint::Vector4::from(view_projection[3]),
-            },
-            orientation: mint::Quaternion {
-                v: mint::Vector3 {
-                    x: orientation.x,
-                    y: orientation.y,
-                    z: orientation.z,
-                },
-                s: orientation.w,
-            },
-            particles: simulation_buffer.device_address,
-            _padding: [0; 2],
-        };
-
-        enc.emit_root(root);
-    }
+    let orientation = Quat::IDENTITY;
+    let view_projection = (projection * view).to_cols_array_2d();
+    let mut root = root_allocator.allocate();
+    *root.as_mut() = BasePassRoot {
+        view_projection,
+        orientation: [orientation.x, orientation.y, orientation.z, orientation.w],
+        particles: simulation_buffer.device_address,
+        _padding: [0; 2],
+    };
+    enc.emit_root(&root);
     enc.set_viewport(rhi::Viewport {
         width: extent.width as f32,
         height: extent.height as f32,
@@ -345,33 +288,9 @@ fn base_pass(
     enc.end_rendering();
 }
 
-fn make_roots(device: &rhi::Device) -> ((rhi::Buffer, rhi::MemoryBlock), (rhi::Buffer, rhi::MemoryBlock)) {
-    let simulation_root_desc = rhi::BufferDesc {
-        size: size_of::<SimulationRoot>() as u64,
-        usage: rhi::BufferUsageFlags::SHADER_DEVICE_ADDRESS | rhi::BufferUsageFlags::UNIFORM,
-    };
-    let simulation_root = device
-        .create_buffer_dedicated(
-            rhi::MemoryDomain::HostVisible,
-            simulation_root_desc,
-            "simulation_root_0",
-        )
-        .unwrap();
-
-    let base_pass_root_desc = rhi::BufferDesc {
-        size: size_of::<BasePassRoot>() as u64,
-        usage: rhi::BufferUsageFlags::SHADER_DEVICE_ADDRESS | rhi::BufferUsageFlags::UNIFORM,
-    };
-    let base_pass_root = device
-        .create_buffer_dedicated(rhi::MemoryDomain::HostVisible, base_pass_root_desc, "base_pass_root")
-        .unwrap();
-
-    (simulation_root, base_pass_root)
-}
-
 fn make_simulation_buffer(device: &rhi::Device) -> (rhi::Buffer, rhi::MemoryBlock) {
     let simulation_buffer_desc = rhi::BufferDesc {
-        size: (size_of::<Particle>() * PARTICLE_COUNTS) as u64,
+        size: size_of::<Particle>() * PARTICLE_COUNTS,
         usage: rhi::BufferUsageFlags::SHADER_DEVICE_ADDRESS | rhi::BufferUsageFlags::STORAGE,
     };
     let mut simulation_buffer = device
@@ -382,25 +301,111 @@ fn make_simulation_buffer(device: &rhi::Device) -> (rhi::Buffer, rhi::MemoryBloc
         )
         .unwrap();
 
-    {
-        let mut rng = rand::rng();
-        let initial_particles: [Particle; PARTICLE_COUNTS] = std::array::from_fn(|_| Particle {
-            position: mint::Vector3 {
-                x: rng.random_range(-1.0..1.0),
-                y: rng.random_range(-1.0..1.0),
-                z: rng.random_range(-0.75..0.75),
-            },
-            velocity: mint::Vector3 {
-                x: rng.random_range(-0.1..0.1),
-                y: rng.random_range(-0.1..0.1),
-                z: rng.random_range(-0.1..0.1) * rng.random_range(-2.0..2.0),
-            },
-        });
-        simulation_buffer
-            .0
-            .get_mut::<[Particle; PARTICLE_COUNTS]>()
-            .copy_from_slice(&initial_particles);
+    let mut rng = rand::rng();
+    for particle in simulation_buffer.0.as_slice_mut::<Particle>() {
+        *particle = Particle {
+            position: [
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-0.75..0.75),
+            ],
+            velocity: [
+                rng.random_range(-0.1..0.1),
+                rng.random_range(-0.1..0.1),
+                rng.random_range(-0.1..0.1) * rng.random_range(-2.0..2.0),
+            ],
+        };
     }
 
     simulation_buffer
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct Particle {
+    position: [f32; 3],
+    velocity: [f32; 3],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct SimulationRoot {
+    particles: u64,
+    delta_seconds: f32,
+    _pad: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct BasePassRoot {
+    view_projection: [[f32; 4]; 4],
+    orientation: [f32; 4],
+    particles: u64,
+    _padding: [u32; 2],
+}
+
+fn align_up(value: usize, align: usize) -> usize {
+    let zero = usize::from(0u8);
+    let mask = align - usize::from(1u8);
+    debug_assert!(align != zero && (align & mask) == zero, "align must be a power of two");
+    (value + mask) & !mask
+}
+
+fn aligned_size<T: bytemuck::Pod>() -> usize {
+    align_up(std::mem::size_of::<T>(), std::mem::align_of::<T>())
+}
+
+struct RootBumpAllocator<'a> {
+    device: &'a rhi::Device,
+    state: RefCell<RootBumpAllocatorState>,
+    buffer: rhi::Buffer,
+    memory: rhi::MemoryBlock,
+}
+
+#[derive(Clone, Copy)]
+struct RootBumpAllocatorState {
+    cursor: usize,
+    capacity: usize,
+}
+
+impl<'a> RootBumpAllocator<'a> {
+    pub fn new(capacity: usize, device: &'a rhi::Device) -> Self {
+        let (buffer, memory) = device
+            .create_buffer_dedicated(
+                rhi::MemoryDomain::HostVisible,
+                rhi::BufferDesc {
+                    size: capacity,
+                    usage: rhi::BufferUsageFlags::UNIFORM | rhi::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                },
+                "root_bump_allocator_underlying",
+            )
+            .unwrap();
+
+        Self {
+            device,
+            state: RefCell::new(RootBumpAllocatorState { cursor: 0, capacity }),
+            buffer,
+            memory,
+        }
+    }
+
+    pub fn allocate<T: bytemuck::Pod>(&'a self) -> BufferSlice<'a, T> {
+        let state = self.state.borrow().clone();
+        let required_bytes = aligned_size::<T>();
+        assert!(state.cursor + required_bytes <= state.capacity);
+        let slice = self.buffer.slice(state.cursor, 1);
+        self.state.borrow_mut().cursor += required_bytes;
+        slice
+    }
+
+    pub fn reset(&self) {
+        self.state.borrow_mut().cursor = 0;
+    }
+}
+
+impl Drop for RootBumpAllocator<'_> {
+    fn drop(&mut self) {
+        self.device.destroy_buffer(self.buffer);
+        self.device.destroy_memory_block(self.memory);
+    }
 }

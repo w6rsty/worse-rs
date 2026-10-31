@@ -234,15 +234,12 @@ impl TextureDimension {
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TextureUsageFlags : u32 {
-        const NONE                     = 0;
         const SAMPLED                  = 1 << 0;
         const STORAGE                  = 1 << 1;
         const COLOR_ATTACHMENT         = 1 << 2;
         const DEPTH_STENCIL_ATTACHMENT = 1 << 3;
         const TRANSFER_SRC             = 1 << 4;
         const TRANSFER_DST             = 1 << 5;
-        const SHARED                   = 1 << 6;
-        const ALIAS                = 1 << 7;
     }
 }
 
@@ -270,6 +267,15 @@ impl TextureUsageFlags {
         }
 
         result
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct TextureCreateFlags : u32 {
+        const SHARED = 1 << 0;
+        const ALIAS  = 1 << 1;
+        const SPARSE = 1 << 2;
     }
 }
 
@@ -465,6 +471,18 @@ impl BlendOp {
 pub enum IndexKind {
     UInt16,
     UInt32,
+}
+
+pub trait IndexType: bytemuck::Pod {
+    const VK_TYPE: vk::IndexType;
+}
+
+impl IndexType for u16 {
+    const VK_TYPE: vk::IndexType = vk::IndexType::UINT16;
+}
+
+impl IndexType for u32 {
+    const VK_TYPE: vk::IndexType = vk::IndexType::UINT32;
 }
 
 impl IndexKind {

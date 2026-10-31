@@ -10,6 +10,7 @@ edition = "2024"
 [workspace.dependencies]
 thiserror = "2.0.19"
 raw-window-handle = { version = "0.6.2", features = ["std"] }
+bytemuck = { version = "1.25.2", features = ["derive"] }
 bitflags = "2.13.1"
 tracing = "0.1.44"
 arrayvec = "0.7.8"
@@ -21,6 +22,7 @@ worse_core = { path = "worse_core" }
 worse_rhi = { path = "worse_rhi", default-features = false }
 
 [dev-dependencies]
+bytemuck = { workspace = true }
 bitflags = { workspace = true }
 glam = { workspace = true }
 mint = { workspace = true }
