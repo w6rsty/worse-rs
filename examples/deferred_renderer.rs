@@ -211,7 +211,11 @@ fn make_gbuffer_pipeline(device: &rhi::Device) -> rhi::Pipeline {
                 mesh: rhi::ShaderStage::new(&ms, "mesh_main"),
             },
             fragment: rhi::ShaderStage::new(&fs, "fragment_main"),
-            rasterizer: rhi::RasterizerState { ..Default::default() },
+            rasterizer: rhi::RasterizerState {
+                cull_mode: rhi::CullMode::Back,
+                front_face: rhi::FrontFace::CounterClockwise,
+                ..Default::default()
+            },
             color_targets: &[
                 rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA8Unorm),
                 rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA16Float),
@@ -322,7 +326,7 @@ fn gbuffer_pass(
         depth: rhi::DepthState {
             test: true,
             write: true,
-            compare: rhi::CompareOp::Always,
+            compare: rhi::CompareOp::Less,
             ..Default::default()
         },
         ..Default::default()
