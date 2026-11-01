@@ -52,8 +52,8 @@ impl MemoryDomain {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResourceMemoryRequirements {
-    pub device_size: u64,
-    pub device_alignment: u64,
+    pub device_size: usize,
+    pub device_alignment: usize,
     pub memory_type_bits: u32,
 }
 
@@ -210,7 +210,7 @@ impl Device {
         };
 
         vk::BufferCreateInfo::default()
-            .size(desc.size as u64)
+            .size(desc.size as vk::DeviceAddress)
             .usage(desc.usage.to_vk())
             .sharing_mode(sharing_mode)
             .queue_family_indices(&indices)
@@ -227,8 +227,8 @@ impl Device {
         };
         let requirements = requirements_info.memory_requirements;
         ResourceMemoryRequirements {
-            device_size: requirements.size,
-            device_alignment: requirements.alignment,
+            device_size: requirements.size as usize,
+            device_alignment: requirements.alignment as usize,
             memory_type_bits: requirements.memory_type_bits,
         }
     }
@@ -278,7 +278,7 @@ impl Device {
     pub fn create_buffer_placed(
         &self,
         block: &MemoryBlock,
-        offset: u64,
+        offset: usize,
         desc: BufferDesc,
         name: impl AsRef<str>,
     ) -> Result<Buffer, BufferError> {
@@ -288,15 +288,20 @@ impl Device {
             return Err(BufferError::IncapableMemory);
         }
 
-        let placed_size = memory_requirements.size;
-        let placed_offset = align_up(offset, memory_requirements.alignment);
+        let placed_size = memory_requirements.size as usize;
+        let placed_offset = align_up(offset, memory_requirements.alignment as usize);
 
-        if placed_offset + placed_size > block.size as u64 {
+        if placed_offset + placed_size > block.size {
             return Err(BufferError::PlacementOutOfBound);
         }
 
         let device = &self.shared;
-        unsafe { device.handle.bind_buffer_memory(buffer, block.memory, placed_offset) }.check(device);
+        unsafe {
+            device
+                .handle
+                .bind_buffer_memory(buffer, block.memory, placed_offset as vk::DeviceAddress)
+        }
+        .check(device);
 
         let address_info = vk::BufferDeviceAddressInfo::default().buffer(buffer);
         let device_address = unsafe { device.handle.get_buffer_device_address(&address_info) };
@@ -610,8 +615,8 @@ impl Device {
         };
         let requirements = requirements_info.memory_requirements;
         ResourceMemoryRequirements {
-            device_size: requirements.size,
-            device_alignment: requirements.alignment,
+            device_size: requirements.size as usize,
+            device_alignment: requirements.alignment as usize,
             memory_type_bits: requirements.memory_type_bits,
         }
     }
@@ -683,7 +688,12 @@ impl Device {
         }
 
         let device = &self.shared;
-        unsafe { device.handle.bind_image_memory(texture, block.memory, offset as u64) }.check(device);
+        unsafe {
+            device
+                .handle
+                .bind_image_memory(texture, block.memory, offset as vk::DeviceAddress)
+        }
+        .check(device);
 
         Ok(Texture {
             handle: texture,
@@ -777,6 +787,57 @@ impl Device {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SamplerDesc {
+    pub min_filter: FilterKind,
+    pub mag_filter: FilterKind,
+    pub mipmap_mode: FilterKind,
+    pub address_u: AddressMode,
+    pub address_v: AddressMode,
+    pub address_w: AddressMode,
+    pub anisotropic: Option<f32>,
+    pub compare: Option<CompareOp>,
+}
+
+impl Default for SamplerDesc {
+    fn default() -> Self {
+        Self {
+            min_filter: FilterKind::Linear,
+            mag_filter: FilterKind::Linear,
+            mipmap_mode: FilterKind::Linear,
+            address_u: AddressMode::Repeat,
+            address_v: AddressMode::Repeat,
+            address_w: AddressMode::Repeat,
+            anisotropic: None,
+            compare: None,
+        }
+    }
+}
+
+impl SamplerDesc {
+    pub(crate) fn to_vk(self) -> vk::SamplerCreateInfo<'static> {
+        let mut info = vk::SamplerCreateInfo::default()
+            .min_filter(self.min_filter.to_vk())
+            .mag_filter(self.mag_filter.to_vk())
+            .mipmap_mode(self.mipmap_mode.to_vk_mipmap_mode())
+            .address_mode_u(self.address_u.to_vk())
+            .address_mode_v(self.address_v.to_vk())
+            .address_mode_w(self.address_w.to_vk());
+        info = if let Some(anisotropic) = self.anisotropic {
+            info.anisotropy_enable(true).max_anisotropy(anisotropic)
+        } else {
+            info.anisotropy_enable(false)
+        };
+        info = if let Some(compare) = self.compare {
+            info.compare_enable(true).compare_op(compare.to_vk())
+        } else {
+            info.compare_enable(false)
+        };
+
+        info
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum DescriptorHeapError {
     #[error("buffer creation error: {0}")]
@@ -799,8 +860,9 @@ pub struct DescriptorHeap {
     pub kind: DescriptorHeapKind,
     pub(crate) buffer: Buffer,
     pub(crate) memory: MemoryBlock,
-    pub(crate) payload: Range<u64>,
-    pub(crate) reserved: Range<u64>,
+    pub(crate) payload: Range<usize>,
+    pub(crate) reserved: Range<usize>,
+    pub(crate) descriptor_size: usize,
 }
 
 impl Device {
@@ -858,12 +920,12 @@ impl Device {
         //
         // payload  = [payload_offset, payload_offset + descriptors_size)
         // reserved = [payload_offset + reserved_offset, + reserved_size)
-        let payload_start = payload_offset;
-        let payload_end = payload_start + descriptors_size;
-        let reserved_start = payload_offset + reserved_offset;
-        let reserved_end = reserved_start + reserved_size;
+        let payload_start = payload_offset as usize;
+        let payload_end = payload_start + descriptors_size as usize;
+        let reserved_start = (payload_offset + reserved_offset) as usize;
+        let reserved_end = reserved_start + reserved_size as usize;
 
-        debug_assert!(reserved_end <= allocation_size);
+        debug_assert!(reserved_end <= allocation_size as usize);
 
         Ok(DescriptorHeap {
             device: self.shared.clone(),
@@ -873,6 +935,7 @@ impl Device {
             memory,
             payload: payload_start..payload_end,
             reserved: reserved_start..reserved_end,
+            descriptor_size: descriptor_size as usize,
         })
     }
 
@@ -886,7 +949,7 @@ impl DescriptorHeap {
     pub fn write_texture_descriptor(
         &self,
         index: usize,
-        view_desc: &TextureViewDesc,
+        desc: &TextureViewDesc,
         kind: TextureDescriptorKind,
     ) -> Result<(), DescriptorHeapError> {
         assert_eq!(self.kind, DescriptorHeapKind::Texture);
@@ -894,12 +957,8 @@ impl DescriptorHeap {
             return Err(DescriptorHeapError::IndexOutOfBound(self.capacity, index));
         }
 
-        let device = &self.device;
-        let fp = &device.extensions.descriptor_heap;
-        let descriptor_size = device.properties.descriptor_heap.image_descriptor_size as usize;
-
         let mut view_usage = vk::ImageViewUsageCreateInfo::default().usage(kind.to_vk_usage());
-        let mut view_info = convert_texture_view_desc(&view_desc);
+        let mut view_info = convert_texture_view_desc(&desc);
         view_info = view_info.push(&mut view_usage);
         let descriptor_info = [vk::ImageDescriptorInfoEXT::default()
             .view(&view_info)
@@ -912,13 +971,36 @@ impl DescriptorHeap {
             .data(resourece_descriptor_info)];
 
         let descriptor_range = unsafe {
-            let offset = self.payload.start as usize + index * descriptor_size as usize;
+            let offset = self.payload.start as usize + index * self.descriptor_size;
             let ptr = self.buffer.ptr.unwrap().add(offset).as_ptr();
-            core::slice::from_raw_parts_mut(ptr, descriptor_size)
+            core::slice::from_raw_parts_mut(ptr, self.descriptor_size)
         };
         let descriptors = [vk::HostAddressRangeEXT::default().address(descriptor_range)];
 
-        unsafe { fp.write_resource_descriptors(&resources, &descriptors) }.check(device);
+        let device = &self.device;
+        let extension = &device.extensions.descriptor_heap;
+        unsafe { extension.write_resource_descriptors(&resources, &descriptors) }.check(&self.device);
+        Ok(())
+    }
+
+    pub fn write_sampler_descriptor(&self, index: usize, desc: &SamplerDesc) -> Result<(), DescriptorHeapError> {
+        assert_eq!(self.kind, DescriptorHeapKind::Sampler);
+        if index >= self.capacity {
+            return Err(DescriptorHeapError::IndexOutOfBound(self.capacity, index));
+        }
+
+        let samplers = [desc.to_vk()];
+
+        let descriptor_range = unsafe {
+            let offset = self.payload.start as usize + index * self.descriptor_size;
+            let ptr = self.buffer.ptr.unwrap().add(offset).as_ptr();
+            core::slice::from_raw_parts_mut(ptr, self.descriptor_size)
+        };
+        let descriptors = [vk::HostAddressRangeEXT::default().address(descriptor_range)];
+
+        let device = &self.device;
+        let extension = &device.extensions.descriptor_heap;
+        unsafe { extension.write_sampler_descriptors(&samplers, &descriptors) }.check(device);
         Ok(())
     }
 }

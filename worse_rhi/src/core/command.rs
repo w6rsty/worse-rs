@@ -1,7 +1,6 @@
 use arrayvec::ArrayVec;
 use ash::vk;
 use std::{cell::RefCell, marker::PhantomData, sync::Arc};
-use thiserror::Error;
 use tracing::debug;
 
 use crate::core::{
@@ -20,9 +19,6 @@ pub enum QueueKind {
     DedicatedCompute,
     DedicatedTransfer,
 }
-
-#[derive(Debug, Error)]
-pub enum Error {}
 
 pub struct CmdQueue {
     pub(crate) device: Arc<DeviceShared>,
@@ -408,8 +404,8 @@ impl CmdEncoder<'_, state::Active> {
                 address: heap.buffer.device_address,
                 size: heap.buffer.size as u64,
             })
-            .reserved_range_offset(heap.reserved.start)
-            .reserved_range_size(heap.reserved.end - heap.reserved.start);
+            .reserved_range_offset(heap.reserved.start as vk::DeviceAddress)
+            .reserved_range_size((heap.reserved.end - heap.reserved.start) as vk::DeviceAddress);
 
         match heap.kind {
             DescriptorHeapKind::Texture => unsafe { extension.cmd_bind_resource_heap(buffer, &bind_info) },

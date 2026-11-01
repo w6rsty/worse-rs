@@ -332,11 +332,37 @@ pub enum FilterKind {
     Linear,
 }
 
+impl FilterKind {
+    pub(crate) fn to_vk(self) -> vk::Filter {
+        match self {
+            Self::Nearest => vk::Filter::NEAREST,
+            Self::Linear => vk::Filter::LINEAR,
+        }
+    }
+
+    pub(crate) fn to_vk_mipmap_mode(self) -> vk::SamplerMipmapMode {
+        match self {
+            Self::Nearest => vk::SamplerMipmapMode::NEAREST,
+            Self::Linear => vk::SamplerMipmapMode::LINEAR,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressMode {
     Repeat,
     MirroredRepeat,
     ClampToEdge,
+}
+
+impl AddressMode {
+    pub(crate) fn to_vk(self) -> vk::SamplerAddressMode {
+        match self {
+            Self::Repeat => vk::SamplerAddressMode::REPEAT,
+            Self::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+            Self::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
