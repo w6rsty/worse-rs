@@ -1,0 +1,2 @@
+[env]
+SLANG_DIR = { value = "C:/Users/worse/scoop/apps/slang/2026.17.1", relative = true }
