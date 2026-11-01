@@ -92,8 +92,8 @@ pub(crate) struct DeviceShared {
 }
 
 pub(crate) struct DeviceExtensions {
-    pub(crate) debug_utils: Option<ext::debug_utils::Device>,
     pub(crate) swapchain: Option<khr::swapchain::Device>,
+    pub(crate) debug_utils: ext::debug_utils::Device,
     pub(crate) device_fault: ext::device_fault::Device,
     pub(crate) descriptor_heap: ext::descriptor_heap::Device,
     pub(crate) device_address_commands: khr::device_address_commands::Device,
@@ -253,16 +253,12 @@ impl DeviceShared {
         }
 
         let extensions = DeviceExtensions {
-            debug_utils: if instance_extensions.debug_utils.is_some() {
-                Some(ext::debug_utils::Device::load(ash_instance, &device))
-            } else {
-                None
-            },
             swapchain: if enabled_presentation {
                 Some(khr::swapchain::Device::load(ash_instance, &device))
             } else {
                 None
             },
+            debug_utils: ext::debug_utils::Device::load(ash_instance, &device),
             device_fault: ext::device_fault::Device::load(ash_instance, &device),
             descriptor_heap: ext::descriptor_heap::Device::load(ash_instance, &device),
             device_address_commands: khr::device_address_commands::Device::load(ash_instance, &device),

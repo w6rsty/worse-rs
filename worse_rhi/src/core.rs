@@ -9,7 +9,7 @@ mod types;
 #[allow(dead_code)]
 mod utils;
 
-pub use crate::core::command::{CmdEncoder, CmdFrame, CmdQueue};
+pub use crate::core::command::{CmdEncoder, CmdFrame, CmdQueue, LabelScope};
 pub use crate::core::device::{Device, DeviceCreateError, DeviceCreateOptions};
 pub use crate::core::instance::{Instance, InstanceCreateError, InstanceCreateOptions, Surface};
 pub use crate::core::pipeline::{

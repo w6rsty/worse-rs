@@ -820,3 +820,42 @@ pub mod state {
     pub struct Pending;
     pub struct Finished;
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct LabelColor {
+    pub value: [f32; 4],
+}
+
+impl LabelColor {
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { value: [r, g, b, a] }
+    }
+
+    pub const BLACK: Self = Self {
+        value: [0.0, 0.0, 0.0, 1.0],
+    };
+    pub const WHITE: Self = Self {
+        value: [1.0, 1.0, 1.0, 1.0],
+    };
+    pub const RED: Self = Self {
+        value: [1.0, 0.0, 0.0, 1.0],
+    };
+    pub const GREEN: Self = Self {
+        value: [0.0, 1.0, 0.0, 1.0],
+    };
+    pub const BLUE: Self = Self {
+        value: [0.0, 0.0, 1.0, 1.0],
+    };
+    pub const YELLOW: Self = Self {
+        value: [1.0, 1.0, 0.0, 1.0],
+    };
+    pub const CYAN: Self = Self {
+        value: [0.0, 1.0, 1.0, 1.0],
+    };
+    pub const MAGENTA: Self = Self {
+        value: [1.0, 0.0, 1.0, 1.0],
+    };
+    pub const TRANSPARENT: Self = Self {
+        value: [0.0, 0.0, 0.0, 0.0],
+    };
+}

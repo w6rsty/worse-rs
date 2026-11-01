@@ -10,7 +10,7 @@ use crate::core::{
     resource::BufferSlice,
     sync::{self, SyncPoint},
     types::*,
-    utils::{VulkanCheck, create_object_debug_name},
+    utils::{VulkanCheck, create_object_debug_name, string_to_cstring_lossy},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,6 +283,22 @@ pub(crate) struct CmdEncoderInner<'e> {
 }
 
 impl CmdEncoder<'_, state::Active> {
+    pub fn begin_label(&self, name: impl AsRef<str>, color: LabelColor) {
+        let buffer = self.inner.buffer;
+        let extension = &self.inner.queue.device.extensions.debug_utils;
+        let name_cstring = string_to_cstring_lossy(name.as_ref());
+        let label = vk::DebugUtilsLabelEXT::default()
+            .label_name(&name_cstring)
+            .color(color.value);
+        unsafe { extension.cmd_begin_debug_utils_label(buffer, &label) };
+    }
+
+    pub fn end_label(&self) {
+        let buffer = self.inner.buffer;
+        let extension = &self.inner.queue.device.extensions.debug_utils;
+        unsafe { extension.cmd_end_debug_utils_label(buffer) };
+    }
+
     pub fn bind_pipeline(&self, pipeline: &Pipeline) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
@@ -545,5 +561,22 @@ impl<'e> CmdEncoder<'e, state::Active> {
 impl CmdEncoder<'_, state::Finished> {
     pub(crate) fn index(self) -> usize {
         self.inner.index
+    }
+}
+
+pub struct LabelScope<'e> {
+    encoder: &'e CmdEncoder<'e, state::Active>,
+}
+
+impl<'e> LabelScope<'e> {
+    pub fn new(encoder: &'e CmdEncoder<'e, state::Active>, name: impl AsRef<str>, color: LabelColor) -> Self {
+        encoder.begin_label(name, color);
+        Self { encoder }
+    }
+}
+
+impl Drop for LabelScope<'_> {
+    fn drop(&mut self) {
+        self.encoder.end_label();
     }
 }

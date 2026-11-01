@@ -59,8 +59,8 @@ pub(crate) struct InstanceShared {
 }
 
 pub(crate) struct InstanceExtension {
-    pub(crate) debug_utils: Option<DebugUtils>,
     pub(crate) surface: Option<Surface>,
+    pub(crate) debug_utils: DebugUtils,
     pub(crate) khr_surface_maintentance_1_available: bool,
     pub(crate) ext_surface_maintentance_1_available: bool,
 }
@@ -189,7 +189,7 @@ impl InstanceShared {
         }
 
         // Debug utils
-        let debug_utils = if ext_debug_utils_available {
+        let debug_utils = {
             let debug_utils_extension = ext::debug_utils::Instance::load(&entry, &instance);
             let debug_tils_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
                 .message_severity(
@@ -201,17 +201,15 @@ impl InstanceShared {
                         | vk::DebugUtilsMessageTypeFlagsEXT::GENERAL,
                 )
                 .pfn_user_callback(Some(debug_utils_messenger_callback));
+
             let debug_utils_messenger =
                 unsafe { debug_utils_extension.create_debug_utils_messenger(&debug_tils_info, None)? };
-
             debug!("created debug utils messenger {debug_utils_messenger:?}");
 
-            Some(DebugUtils {
+            DebugUtils {
                 extension: debug_utils_extension,
                 messenger: debug_utils_messenger,
-            })
-        } else {
-            None
+            }
         };
 
         let surface = if enable_presentation {
@@ -252,13 +250,12 @@ impl Drop for InstanceShared {
             }
         }
 
-        if let Some(debug_utils) = &self.extensions.debug_utils {
-            unsafe {
-                debug_utils
-                    .extension
-                    .destroy_debug_utils_messenger(debug_utils.messenger, None)
-            };
-        }
+        unsafe {
+            self.extensions
+                .debug_utils
+                .extension
+                .destroy_debug_utils_messenger(self.extensions.debug_utils.messenger, None)
+        };
 
         unsafe { self.handle.destroy_instance(None) };
     }

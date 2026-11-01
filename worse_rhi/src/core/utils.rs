@@ -112,16 +112,15 @@ pub(crate) fn create_object_debug_name<T: vk::Handle + std::fmt::Debug + Copy>(
     object: T,
     name: impl AsRef<str>,
 ) {
-    if let Some(debug_utils) = &device.extensions.debug_utils {
-        let name_cstr = CString::new(name.as_ref()).unwrap_or_default();
+    let extension = &device.extensions.debug_utils;
+    let name_cstr = CString::new(name.as_ref()).unwrap_or_default();
 
-        let object_name_info = vk::DebugUtilsObjectNameInfoEXT::default()
-            .object_handle(object)
-            .object_name(&name_cstr);
+    let object_name_info = vk::DebugUtilsObjectNameInfoEXT::default()
+        .object_handle(object)
+        .object_name(&name_cstr);
 
-        if let Err(err) = unsafe { debug_utils.set_debug_utils_object_name(&object_name_info) } {
-            error!("failed to set debug name for object {object:?}: {err}");
-        }
+    if let Err(err) = unsafe { extension.set_debug_utils_object_name(&object_name_info) } {
+        error!("failed to set debug name for object {object:?}: {err}");
     }
 }
 

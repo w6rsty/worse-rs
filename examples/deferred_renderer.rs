@@ -250,6 +250,7 @@ fn simulation_pass(
     buffer: &rhi::Buffer,
     delta_seconds: f32,
 ) {
+    let _label = rhi::LabelScope::new(enc, "simulation", rhi::LabelColor::BLUE);
     enc.bind_pipeline(pipeline);
     let mut root = root_allocator.allocate();
     *root.as_mut() = SimulationRoot {
@@ -269,6 +270,7 @@ fn gbuffer_pass(
     simulation_buffer: &rhi::Buffer,
     camera: &CameraSettings,
 ) {
+    let _label = rhi::LabelScope::new(enc, "gbuffer", rhi::LabelColor::CYAN);
     enc.begin_rendering(rhi::RenderingDesc {
         area: rhi::Rect2D {
             extent: gbuffer.extent,
@@ -343,6 +345,7 @@ fn shading_pass(
     root_allocator: &RootBumpAllocator,
     camera: &CameraSettings,
 ) {
+    let _label = rhi::LabelScope::new(enc, "shading", rhi::LabelColor::GREEN);
     enc.begin_rendering(rhi::RenderingDesc {
         area: rhi::Rect2D {
             extent,
