@@ -1,5 +1,5 @@
 use ash::vk::{self, TaggedStructure};
-use std::{marker::PhantomData, ptr::NonNull, range::Range, sync::Arc};
+use std::{marker::PhantomData, ops::Range, ptr::NonNull, sync::Arc};
 use thiserror::Error;
 use tracing::debug;
 
@@ -68,7 +68,7 @@ pub enum MemoryBlockError {
 #[derive(Debug, Clone, Copy)]
 pub struct MemoryBlock {
     pub(crate) memory: vk::DeviceMemory,
-    pub size: u64,
+    pub size: usize,
     pub memory_type_index: u32,
     pub mapped_ptr: Option<NonNull<u8>>,
 }
@@ -125,25 +125,25 @@ impl Device {
     pub fn create_memory_block(
         &self,
         domain: MemoryDomain,
-        size: u64,
+        size: usize,
         memory_type_bits: u32,
         name: impl AsRef<str>,
     ) -> Result<MemoryBlock, MemoryBlockError> {
         let device = &self.shared;
 
         let requirements = domain.to_vk_memory_property();
-        let memory_type_index = self.find_memory_type(size, memory_type_bits, requirements)?;
+        let memory_type_index = self.find_memory_type(size as u64, memory_type_bits, requirements)?;
 
         let mut allocate_flags = vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
         let allocate_info = vk::MemoryAllocateInfo::default()
             .push(&mut allocate_flags)
-            .allocation_size(size)
+            .allocation_size(size as u64)
             .memory_type_index(memory_type_index);
         let memory = unsafe { device.handle.allocate_memory(&allocate_info, None) }.check(device);
         debug!(
             "allocate memory {memory:?}[{}], size {}, domain {domain:?}, memory_type {memory_type_bits:b}",
             name.as_ref(),
-            format_bytes(size),
+            format_bytes(size as u64),
         );
         create_object_debug_name(device, memory, name);
 
@@ -251,7 +251,13 @@ impl Device {
     ) -> Result<(Buffer, MemoryBlock), BufferError> {
         let (buffer, memory_requirements) = self.create_buffer_internal(desc, &name);
         let allocation_size = memory_requirements.size;
-        let block = self.create_memory_block(domain, allocation_size, memory_requirements.memory_type_bits, &name)?;
+        let block_name = format!("{}_memory", name.as_ref());
+        let block = self.create_memory_block(
+            domain,
+            allocation_size as usize,
+            memory_requirements.memory_type_bits,
+            &block_name,
+        )?;
 
         let device = &self.shared;
         unsafe { device.handle.bind_buffer_memory(buffer, block.memory, 0) }.check(device);
@@ -285,7 +291,7 @@ impl Device {
         let placed_size = memory_requirements.size;
         let placed_offset = align_up(offset, memory_requirements.alignment);
 
-        if placed_offset + placed_size > block.size {
+        if placed_offset + placed_size > block.size as u64 {
             return Err(BufferError::PlacementOutOfBound);
         }
 
@@ -610,7 +616,11 @@ impl Device {
         }
     }
 
-    fn create_texture_internal(&self, desc: TextureDesc, name: impl AsRef<str>) -> (vk::Image, vk::MemoryRequirements) {
+    fn create_texture_internal(
+        &self,
+        desc: &TextureDesc,
+        name: impl AsRef<str>,
+    ) -> (vk::Image, vk::MemoryRequirements) {
         let device = &self.shared;
         let texture_info = self.convert_texture_desc(&desc);
         let texture = unsafe { device.handle.create_image(&texture_info, None) }.check(device);
@@ -622,14 +632,14 @@ impl Device {
 
     pub fn create_texture_dedicated(
         &self,
-        desc: TextureDesc,
+        desc: &TextureDesc,
         name: impl AsRef<str>,
     ) -> Result<(Texture, MemoryBlock), TextureError> {
         let (texture, memory_requirements) = self.create_texture_internal(desc, &name);
         let allocation_size = memory_requirements.size;
         let block = self.create_memory_block(
             MemoryDomain::DeviceLocal,
-            allocation_size,
+            allocation_size as usize,
             memory_requirements.memory_type_bits,
             &name,
         )?;
@@ -655,8 +665,8 @@ impl Device {
     pub fn create_texture_placed(
         &self,
         block: &MemoryBlock,
-        offset: u64,
-        desc: TextureDesc,
+        offset: usize,
+        desc: &TextureDesc,
         name: impl AsRef<str>,
     ) -> Result<Texture, TextureError> {
         let (texture, memory_requirements) = self.create_texture_internal(desc, name);
@@ -665,15 +675,15 @@ impl Device {
             return Err(TextureError::IncapableMemory);
         }
 
-        let placed_size = memory_requirements.size;
-        let placed_offset = align_up(offset, memory_requirements.alignment);
+        let placed_size = memory_requirements.size as usize;
+        let placed_offset = align_up(offset, memory_requirements.alignment as usize);
 
         if placed_offset + placed_size > block.size {
             return Err(TextureError::PlacementOutOfBound);
         }
 
         let device = &self.shared;
-        unsafe { device.handle.bind_image_memory(texture, block.memory, offset) }.check(device);
+        unsafe { device.handle.bind_image_memory(texture, block.memory, offset as u64) }.check(device);
 
         Ok(Texture {
             handle: texture,
@@ -743,7 +753,7 @@ pub struct TargetView {
 }
 
 impl Device {
-    pub fn create_target_view(&self, texture: &Texture, view_desc: TextureViewDesc) -> TargetView {
+    pub fn create_target_view(&self, texture: &Texture, view_desc: &TextureViewDesc) -> TargetView {
         let device = &self.shared;
         let view_info = convert_texture_view_desc(&view_desc);
         let view = unsafe { device.handle.create_image_view(&view_info, None) }.check(device);
@@ -771,6 +781,10 @@ impl Device {
 pub enum DescriptorHeapError {
     #[error("buffer creation error: {0}")]
     BufferCreationFailed(#[from] BufferError),
+    #[error("capacity overflow")]
+    CapacityOverflow,
+    #[error("descriptor index out of bound. heap capacity {0}, given {1}")]
+    IndexOutOfBound(usize, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -783,9 +797,10 @@ pub struct DescriptorHeap {
     device: Arc<DeviceShared>,
     pub capacity: usize,
     pub kind: DescriptorHeapKind,
-    buffer: Buffer,
-    memory: MemoryBlock,
-    payload_offset: usize,
+    pub(crate) buffer: Buffer,
+    pub(crate) memory: MemoryBlock,
+    pub(crate) payload: Range<u64>,
+    pub(crate) reserved: Range<u64>,
 }
 
 impl Device {
@@ -795,41 +810,60 @@ impl Device {
         kind: DescriptorHeapKind,
         name: impl AsRef<str>,
     ) -> Result<DescriptorHeap, DescriptorHeapError> {
-        let heap_properties = &self.shared.properties.descriptor_heap;
-        let is_resource_heap = kind == DescriptorHeapKind::Texture;
+        let props = &self.shared.properties.descriptor_heap;
 
-        let (reserved_aligment, heap_alignment, reserved_size, descriptor_size) = if is_resource_heap {
-            (
-                heap_properties.image_descriptor_alignment,
-                heap_properties.resource_heap_alignment,
-                heap_properties.min_resource_heap_reserved_range,
-                capacity as u64 * heap_properties.image_descriptor_size,
-            )
-        } else {
-            (
-                heap_properties.sampler_descriptor_alignment,
-                heap_properties.sampler_heap_alignment,
-                heap_properties.min_sampler_heap_reserved_range,
-                capacity as u64 * heap_properties.sampler_descriptor_size,
-            )
+        let (reserved_alignment, heap_alignment, reserved_size, descriptor_size) = match kind {
+            DescriptorHeapKind::Texture => (
+                props.image_descriptor_alignment,
+                props.resource_heap_alignment,
+                props.min_resource_heap_reserved_range,
+                props.image_descriptor_size,
+            ),
+            DescriptorHeapKind::Sampler => (
+                props.sampler_descriptor_alignment,
+                props.sampler_heap_alignment,
+                props.min_sampler_heap_reserved_range,
+                props.sampler_descriptor_size,
+            ),
         };
-        let reserved_offset = align_up(descriptor_size, reserved_aligment);
+
+        let descriptors_size = (capacity as u64)
+            .checked_mul(descriptor_size)
+            .ok_or(DescriptorHeapError::CapacityOverflow)?;
+
+        let reserved_offset = align_up(descriptors_size, reserved_alignment);
         let payload_size = reserved_offset + reserved_size;
-        let allocation_alignment = heap_alignment.max(16);
+
+        let allocation_alignment = heap_alignment.max(reserved_alignment).max(16);
         let allocation_padding = allocation_alignment - 1;
         let allocation_size = payload_size + allocation_padding;
 
+        let back_buffer_name = format!("{}_back_buffer", name.as_ref());
         let (buffer, memory) = self.create_buffer_dedicated(
             MemoryDomain::HostVisible,
             BufferDesc {
                 size: allocation_size as usize,
                 usage: BufferUsageFlags::SHADER_DEVICE_ADDRESS | BufferUsageFlags::DESCRIPTOR_HEAP,
             },
-            &name,
+            &back_buffer_name,
         )?;
 
         let payload_base = align_up(buffer.device_address, allocation_alignment);
-        let payload_offset = (payload_base - buffer.device_address) as usize;
+        let payload_offset = payload_base - buffer.device_address;
+
+        //
+        // |<-lead pad->|<------- descriptors ------>|<-gap->|<-- reserved -->|<-tail pad->|
+        // 0            payload_offset                       reserved_start    reserved_end
+        //              (= payload_base)
+        //
+        // payload  = [payload_offset, payload_offset + descriptors_size)
+        // reserved = [payload_offset + reserved_offset, + reserved_size)
+        let payload_start = payload_offset;
+        let payload_end = payload_start + descriptors_size;
+        let reserved_start = payload_offset + reserved_offset;
+        let reserved_end = reserved_start + reserved_size;
+
+        debug_assert!(reserved_end <= allocation_size);
 
         Ok(DescriptorHeap {
             device: self.shared.clone(),
@@ -837,7 +871,8 @@ impl Device {
             kind,
             buffer,
             memory,
-            payload_offset,
+            payload: payload_start..payload_end,
+            reserved: reserved_start..reserved_end,
         })
     }
 
@@ -848,8 +883,16 @@ impl Device {
 }
 
 impl DescriptorHeap {
-    pub fn write_texture_descriptor(&self, index: usize, view_desc: TextureViewDesc, kind: TextureDescriptorKind) {
+    pub fn write_texture_descriptor(
+        &self,
+        index: usize,
+        view_desc: &TextureViewDesc,
+        kind: TextureDescriptorKind,
+    ) -> Result<(), DescriptorHeapError> {
         assert_eq!(self.kind, DescriptorHeapKind::Texture);
+        if index >= self.capacity {
+            return Err(DescriptorHeapError::IndexOutOfBound(self.capacity, index));
+        }
 
         let device = &self.device;
         let fp = &device.extensions.descriptor_heap;
@@ -869,11 +912,13 @@ impl DescriptorHeap {
             .data(resourece_descriptor_info)];
 
         let descriptor_range = unsafe {
-            let ptr = self.buffer.ptr.unwrap().add(index * descriptor_size).as_ptr();
+            let offset = self.payload.start as usize + index * descriptor_size as usize;
+            let ptr = self.buffer.ptr.unwrap().add(offset).as_ptr();
             core::slice::from_raw_parts_mut(ptr, descriptor_size)
         };
         let descriptors = [vk::HostAddressRangeEXT::default().address(descriptor_range)];
 
         unsafe { fp.write_resource_descriptors(&resources, &descriptors) }.check(device);
+        Ok(())
     }
 }

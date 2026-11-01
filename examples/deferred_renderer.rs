@@ -3,39 +3,40 @@ use glam::{Quat, Vec3};
 use rand::Rng;
 use std::{cell::RefCell, fs, io, path::Path, sync::Arc, time};
 use worse_core::{
-    log::{self, LogConfig, error},
+    log::{self, LogConfig, error, info},
     window::{Event, Window, WindowDesc},
 };
-use worse_rhi::core::{self as rhi, BufferSlice};
+use worse_rhi::core::{self as rhi, BufferSlice, TargetView};
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
 const SPWAPCHAIN_IMAGE_COUNT: u32 = 2;
 const FRAMES_IN_FLIGHT: u32 = 1;
 const PARTICLE_COUNTS: usize = 1024;
+const CAMERA_MOVE_STEP: f32 = 0.25;
+const CAMERA_FOV_STEP: f32 = 5.0_f32.to_radians();
+const CAMERA_CLIP_STEP: f32 = 0.1;
 
 fn main() {
     let mut log_cfg = LogConfig::engine_preset();
-    log_cfg.filter = "debug".to_string();
+    log_cfg.filter = "info".to_string();
     let _log_guard = log::init(log_cfg).unwrap();
-    let window = Arc::new(Window::new(&WindowDesc::default().initial_size(WIDTH, HEIGHT).resizable(false)).unwrap());
+    let window = Arc::new(Window::new(&WindowDesc::default().initial_size(WIDTH, HEIGHT)).unwrap());
 
     let (_instance, device) = make_context(window.clone());
 
     let root_allocator = RootBumpAllocator::new(512, &device);
+    let texture_descriptor_heap = device
+        .create_descriptor_heap(32, rhi::DescriptorHeapKind::Texture, "texture_descriptor_heap")
+        .unwrap();
+    let texture_allocator = TextureAllocator::new(256 * 1024 * 1024, &device);
 
     let simulation_buffer = make_simulation_buffer(&device);
     let simulation_pipeline = make_simulation_pipeline(&device);
+    let gbuffer_pipeline = make_gbuffer_pipeline(&device);
+    let shading_pipeline = make_shading_pipeline(&device);
 
-    let base_pass_pipeline = make_base_pass_pipeline(&device);
-
-    let depth_texture = device
-        .create_texture_dedicated(rhi::TextureDesc::new_default_depth(WIDTH, HEIGHT), "depth")
-        .unwrap();
-    let depth_texture_view = device.create_target_view(
-        &depth_texture.0,
-        rhi::TextureViewDesc::new_default_range(&depth_texture.0, rhi::TextureAspect::Depth),
-    );
+    let mut gbuffer: Option<GBuffer> = None;
 
     let mut swapchain = rhi::Swapchain::new(
         &device,
@@ -49,23 +50,15 @@ fn main() {
     let mut previous_time = time::Instant::now();
     let mut last_finish_value: u64 = 0;
     let timeline = rhi::Timeline::new(&device, last_finish_value, "timeline");
-
-    {
-        let prepare_frame = cmd_frame.wait_and_reset().begin();
-        let enc = prepare_frame.bump_encoder();
-        enc.unifiy_texture_layout(&depth_texture.0, rhi::TextureAspect::Depth);
-
-        last_finish_value += 1;
-        let prepare_finish_point = timeline.sync_point(last_finish_value, rhi::StageFlags::ALL_COMMANDS);
-        prepare_frame.batch([enc.finish()], [], [prepare_finish_point]);
-        cmd_frame = prepare_frame.end_and_submit(prepare_finish_point);
-    }
+    let mut camera = CameraSettings::default();
+    info!("Controls: WASD move, Q/E move vertically, +/- adjust FOV, J/K adjust near, N/M adjust far, R reset");
 
     let mut running = true;
     while running {
         for event in window.pump_events() {
             match event {
                 Event::CloseRequested => running = false,
+                Event::Char(character) => camera.handle_char(character),
                 _ => {}
             }
         }
@@ -86,23 +79,35 @@ fn main() {
             }
         };
 
-        root_allocator.reset();
-
         let current_time = time::Instant::now();
         let delta_seconds = current_time.duration_since(previous_time).as_secs_f32();
         previous_time = current_time;
 
         let active_cmd_frame = cmd_frame.wait_and_reset().begin();
+
+        root_allocator.reset();
+        texture_allocator.reset();
+
         let enc = active_cmd_frame.bump_encoder();
 
-        enc.swapchain_frame_acquire_barrier(&swapchain_frame);
+        if let Some(gbuffer) = gbuffer {
+            gbuffer.destroy(&device);
+        }
+        gbuffer = Some(GBuffer::create(
+            &enc,
+            window_extent,
+            &texture_allocator,
+            &texture_descriptor_heap,
+        ));
+        enc.bind_descriptor_heap(&texture_descriptor_heap);
+
         enc.barrier(
-            rhi::StageFlags::COMPUTE | rhi::StageFlags::MESH,
-            rhi::AccessFlags::SHADER_READ | rhi::AccessFlags::SHADER_WRITE,
+            rhi::StageFlags::MESH,
+            rhi::AccessFlags::SHADER_READ,
             rhi::StageFlags::COMPUTE,
-            rhi::AccessFlags::SHADER_READ | rhi::AccessFlags::SHADER_WRITE,
+            rhi::AccessFlags::SHADER_WRITE,
         );
-        simulation(
+        simulation_pass(
             &enc,
             &simulation_pipeline,
             &root_allocator,
@@ -115,14 +120,22 @@ fn main() {
             rhi::StageFlags::MESH,
             rhi::AccessFlags::SHADER_READ,
         );
-        base_pass(
+        gbuffer_pass(
             &enc,
-            &base_pass_pipeline,
-            window_extent,
-            rhi::TargetView::from_frame(&swapchain_frame),
-            depth_texture_view,
+            &gbuffer_pipeline,
+            gbuffer.as_ref().unwrap(),
             &root_allocator,
             &simulation_buffer.0,
+            &camera,
+        );
+        enc.swapchain_frame_acquire_barrier(&swapchain_frame);
+        shading_pass(
+            &enc,
+            &shading_pipeline,
+            window_extent,
+            &swapchain_frame,
+            &root_allocator,
+            &camera,
         );
         enc.swapchain_frame_present_barrier(&swapchain_frame);
 
@@ -140,16 +153,18 @@ fn main() {
     }
 
     let _ = cmd_frame.wait_and_reset();
+    if let Some(gbuffer) = gbuffer {
+        gbuffer.destroy(&device);
+    }
 
     swapchain.wait_last_blocking(&timeline);
     device.wait_idle_blocking();
-    device.destroy_pipeline(base_pass_pipeline);
+    device.destroy_pipeline(gbuffer_pipeline);
     device.destroy_pipeline(simulation_pipeline);
+    device.destroy_pipeline(shading_pipeline);
     device.destroy_buffer(simulation_buffer.0);
     device.destroy_memory_block(simulation_buffer.1);
-    device.destory_target_view(depth_texture_view);
-    device.destory_texture(depth_texture.0);
-    device.destroy_memory_block(depth_texture.1);
+    device.destroy_descriptor_heap(texture_descriptor_heap);
     swapchain.destroy();
 }
 
@@ -186,9 +201,9 @@ fn make_simulation_pipeline(device: &rhi::Device) -> rhi::Pipeline {
         .unwrap()
 }
 
-fn make_base_pass_pipeline(device: &rhi::Device) -> rhi::Pipeline {
-    let ms = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/base_pass_ms.spv")).unwrap();
-    let fs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/base_pass_fs.spv")).unwrap();
+fn make_gbuffer_pipeline(device: &rhi::Device) -> rhi::Pipeline {
+    let ms = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer_ms.spv")).unwrap();
+    let fs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer_fs.spv")).unwrap();
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
             primitive: rhi::PrimitiveStages::Mesh {
@@ -197,14 +212,34 @@ fn make_base_pass_pipeline(device: &rhi::Device) -> rhi::Pipeline {
             },
             fragment: rhi::ShaderStage::new(&fs, "fragment_main"),
             rasterizer: rhi::RasterizerState { ..Default::default() },
-            color_targets: &[rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA8Srgb)],
+            color_targets: &[
+                rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA8Unorm),
+                rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA16Float),
+            ],
             depth_format: rhi::PixelFormat::D32Float,
             stencil_format: rhi::PixelFormat::Undefined,
         })
         .expect("failed to create pipeline")
 }
 
-fn simulation(
+fn make_shading_pipeline(device: &rhi::Device) -> rhi::Pipeline {
+    let vs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading_vs.spv")).unwrap();
+    let fs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading_fs.spv")).unwrap();
+    device
+        .create_raster_pipeline(rhi::RasterPipelineDesc {
+            primitive: rhi::PrimitiveStages::Vertex {
+                vertex: rhi::ShaderStage::new(&vs, "vertex_main"),
+            },
+            fragment: rhi::ShaderStage::new(&fs, "fragment_main"),
+            rasterizer: rhi::RasterizerState { ..Default::default() },
+            color_targets: &[rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA8Srgb)],
+            depth_format: rhi::PixelFormat::Undefined,
+            stencil_format: rhi::PixelFormat::Undefined,
+        })
+        .expect("failed to create pipeline")
+}
+
+fn simulation_pass(
     enc: &rhi::CmdEncoder<'_, rhi::state::Active>,
     pipeline: &rhi::Pipeline,
     root_allocator: &RootBumpAllocator,
@@ -222,42 +257,50 @@ fn simulation(
     enc.dispatch(1, 1, 1);
 }
 
-fn base_pass(
+fn gbuffer_pass(
     enc: &rhi::CmdEncoder<'_, rhi::state::Active>,
     pipeline: &rhi::Pipeline,
-    extent: rhi::Extent2D,
-    color: rhi::TargetView,
-    depth: rhi::TargetView,
+    gbuffer: &GBuffer,
     root_allocator: &RootBumpAllocator,
     simulation_buffer: &rhi::Buffer,
+    camera: &CameraSettings,
 ) {
     enc.begin_rendering(rhi::RenderingDesc {
         area: rhi::Rect2D {
-            extent,
+            extent: gbuffer.extent,
             offset: rhi::Offset2D::default(),
         },
-        colors: &[rhi::ColorTarget::new(
-            color,
-            rhi::LoadOp::Clear,
-            rhi::StoreOp::Store,
-            rhi::ClearColor::EMPTY,
-        )],
+        colors: &[
+            rhi::ColorTarget {
+                view: gbuffer.albedo_view,
+                load: rhi::LoadOp::Clear,
+                store: rhi::StoreOp::Store,
+                clear: rhi::ClearColor::EMPTY,
+            },
+            rhi::ColorTarget {
+                view: gbuffer.normal_roughness_view,
+                load: rhi::LoadOp::Clear,
+                store: rhi::StoreOp::Store,
+                clear: rhi::ClearColor::EMPTY,
+            },
+        ],
         depth: Some(rhi::DepthTarget {
-            view: depth,
+            view: gbuffer.depth_view,
             load: rhi::LoadOp::Clear,
             store: rhi::StoreOp::Store,
-            clear: 0.0,
+            clear: 1.0,
         }),
         stencil: None,
     });
     enc.bind_pipeline(&pipeline);
-    let aspect_ratio = extent.width.max(1) as f32 / extent.height.max(1) as f32;
-    let view = glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, 0.0, 4.0), Vec3::ZERO, Vec3::Y);
-    let projection = glam::camera::rh::proj::vulkan::perspective(60.0_f32.to_radians(), aspect_ratio, 0.1, 100.0);
+    let aspect_ratio = gbuffer.extent.width.max(1) as f32 / gbuffer.extent.height.max(1) as f32;
+    let view = glam::camera::rh::view::look_at_mat4(camera.position, camera.target, camera.up);
+    let projection =
+        glam::camera::rh::proj::vulkan::perspective(camera.vertical_fov, aspect_ratio, camera.near, camera.far);
     let orientation = Quat::IDENTITY;
     let view_projection = (projection * view).to_cols_array_2d();
     let mut root = root_allocator.allocate();
-    *root.as_mut() = BasePassRoot {
+    *root.as_mut() = GBufferRoot {
         view_projection,
         orientation: [orientation.x, orientation.y, orientation.z, orientation.w],
         particles: simulation_buffer.device_address,
@@ -265,14 +308,14 @@ fn base_pass(
     };
     enc.emit_root(&root);
     enc.set_viewport(rhi::Viewport {
-        width: extent.width as f32,
-        height: extent.height as f32,
+        width: gbuffer.extent.width as f32,
+        height: gbuffer.extent.height as f32,
         min_depth: 0.0,
         max_depth: 1.0,
         ..Default::default()
     });
     enc.set_scissor(rhi::Rect2D {
-        extent,
+        extent: gbuffer.extent,
         offset: rhi::Offset2D::default(),
     });
     enc.set_stencil(rhi::DepthStencilState {
@@ -285,6 +328,71 @@ fn base_pass(
         ..Default::default()
     });
     enc.draw_mesh(PARTICLE_COUNTS as u32, 1, 1);
+    enc.end_rendering();
+}
+
+fn shading_pass(
+    enc: &rhi::CmdEncoder<'_, rhi::state::Active>,
+    pipeline: &rhi::Pipeline,
+    extent: rhi::Extent2D,
+    swapchain_frame: &rhi::SwapchainFrame,
+    root_allocator: &RootBumpAllocator,
+    camera: &CameraSettings,
+) {
+    enc.begin_rendering(rhi::RenderingDesc {
+        area: rhi::Rect2D {
+            extent,
+            offset: rhi::Offset2D::default(),
+        },
+        colors: &[rhi::ColorTarget {
+            view: TargetView::from_swapchain_frame(swapchain_frame),
+            load: rhi::LoadOp::Clear,
+            store: rhi::StoreOp::Store,
+            clear: rhi::ClearColor::EMPTY,
+        }],
+        depth: None,
+        stencil: None,
+    });
+    enc.bind_pipeline(&pipeline);
+    let mut root = root_allocator.allocate();
+    let aspect_ratio = extent.width.max(1) as f32 / extent.height.max(1) as f32;
+    let tan_half_fov = (camera.vertical_fov * 0.5).tan();
+    let forward = (camera.target - camera.position).normalize();
+    let right = forward.cross(camera.up).normalize();
+    let camera_up = right.cross(forward).normalize();
+    *root.as_mut() = ShadingRoot {
+        camera_position: [camera.position.x, camera.position.y, camera.position.z, 1.0],
+        ray_center: [forward.x, forward.y, forward.z, 0.0],
+        ray_horizontal: [
+            right.x * tan_half_fov * aspect_ratio,
+            right.y * tan_half_fov * aspect_ratio,
+            right.z * tan_half_fov * aspect_ratio,
+            0.0,
+        ],
+        ray_vertical: [
+            camera_up.x * tan_half_fov,
+            camera_up.y * tan_half_fov,
+            camera_up.z * tan_half_fov,
+            0.0,
+        ],
+        depth_linearize: [
+            camera.near * camera.far / (camera.far - camera.near),
+            camera.far / (camera.far - camera.near),
+        ],
+        gbuffer_pixel_scale: [1.0, 1.0],
+    };
+    enc.emit_root(&root);
+    enc.set_viewport(rhi::Viewport {
+        width: extent.width as f32,
+        height: extent.height as f32,
+        ..Default::default()
+    });
+    enc.set_scissor(rhi::Rect2D {
+        extent,
+        offset: rhi::Offset2D::default(),
+    });
+    enc.set_stencil(rhi::DepthStencilState::default());
+    enc.draw(3, 1, 0, 0);
     enc.end_rendering();
 }
 
@@ -337,11 +445,77 @@ struct SimulationRoot {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-struct BasePassRoot {
+struct GBufferRoot {
     view_projection: [[f32; 4]; 4],
     orientation: [f32; 4],
     particles: u64,
     _padding: [u32; 2],
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct ShadingRoot {
+    camera_position: [f32; 4],
+    ray_center: [f32; 4],
+    ray_horizontal: [f32; 4],
+    ray_vertical: [f32; 4],
+    depth_linearize: [f32; 2],
+    gbuffer_pixel_scale: [f32; 2],
+}
+
+struct CameraSettings {
+    position: Vec3,
+    target: Vec3,
+    up: Vec3,
+    vertical_fov: f32,
+    near: f32,
+    far: f32,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            position: Vec3::new(0.0, 0.0, 4.0),
+            target: Vec3::ZERO,
+            up: Vec3::Y,
+            vertical_fov: 60.0_f32.to_radians(),
+            near: 0.1,
+            far: 100.0,
+        }
+    }
+}
+
+impl CameraSettings {
+    fn handle_char(&mut self, character: char) {
+        let forward = (self.target - self.position).normalize();
+        let right = forward.cross(self.up).normalize();
+
+        match character.to_ascii_lowercase() {
+            'w' => self.translate(forward * CAMERA_MOVE_STEP),
+            's' => self.translate(-forward * CAMERA_MOVE_STEP),
+            'a' => self.translate(-right * CAMERA_MOVE_STEP),
+            'd' => self.translate(right * CAMERA_MOVE_STEP),
+            'q' => self.translate(-self.up * CAMERA_MOVE_STEP),
+            'e' => self.translate(self.up * CAMERA_MOVE_STEP),
+            '+' | '=' => {
+                self.vertical_fov = (self.vertical_fov + CAMERA_FOV_STEP).min(120.0_f32.to_radians());
+            }
+            '-' => {
+                self.vertical_fov = (self.vertical_fov - CAMERA_FOV_STEP).max(20.0_f32.to_radians());
+            }
+            'j' => self.near = (self.near - CAMERA_CLIP_STEP).max(0.05),
+            'k' => self.near = (self.near + CAMERA_CLIP_STEP).min(self.far - 1.0),
+            'n' => self.far = (self.far - 1.0).max(self.near + 1.0),
+            'm' => self.far += 1.0,
+            'r' => *self = Self::default(),
+            _ => {}
+        }
+    }
+
+    fn translate(&mut self, offset: Vec3) {
+        self.position += offset;
+        self.target += offset;
+    }
 }
 
 fn align_up(value: usize, align: usize) -> usize {
@@ -407,5 +581,157 @@ impl Drop for RootBumpAllocator<'_> {
     fn drop(&mut self) {
         self.device.destroy_buffer(self.buffer);
         self.device.destroy_memory_block(self.memory);
+    }
+}
+
+struct TextureAllocator<'a> {
+    device: &'a rhi::Device,
+    memory: rhi::MemoryBlock,
+    state: RefCell<TextureAllocatorState>,
+}
+
+#[derive(Clone, Copy)]
+struct TextureAllocatorState {
+    cursor: usize,
+    capacity: usize,
+}
+
+impl<'a> TextureAllocator<'a> {
+    pub fn new(capacity: usize, device: &'a rhi::Device) -> Self {
+        let memory_type = device
+            .query_texture_memory_requirements(
+                &rhi::TextureDesc::new_default_2d(1, 1)
+                    .format(rhi::PixelFormat::RGBA8Unorm)
+                    .usage(rhi::TextureUsageFlags::SAMPLED | rhi::TextureUsageFlags::COLOR_ATTACHMENT),
+            )
+            .memory_type_bits
+            | device
+                .query_texture_memory_requirements(
+                    &rhi::TextureDesc::new_default_2d(1, 1)
+                        .format(rhi::PixelFormat::RGBA16Float)
+                        .usage(rhi::TextureUsageFlags::SAMPLED | rhi::TextureUsageFlags::COLOR_ATTACHMENT),
+                )
+                .memory_type_bits
+            | device
+                .query_texture_memory_requirements(&rhi::TextureDesc::new_default_depth(1, 1))
+                .memory_type_bits;
+
+        let memory = device
+            .create_memory_block(
+                rhi::MemoryDomain::DeviceLocal,
+                capacity,
+                memory_type,
+                "texture_allocator_back_memory",
+            )
+            .unwrap();
+
+        Self {
+            device,
+            memory,
+            state: RefCell::new(TextureAllocatorState { cursor: 0, capacity }),
+        }
+    }
+
+    pub fn allocate(&self, desc: &rhi::TextureDesc, name: impl AsRef<str>) -> rhi::Texture {
+        let state = self.state.borrow().clone();
+
+        let requirements = self.device.query_texture_memory_requirements(desc);
+
+        let start = align_up(state.cursor, requirements.device_alignment as usize);
+        let end = start + requirements.device_size as usize;
+        assert!(end <= state.capacity);
+
+        let texture = self
+            .device
+            .create_texture_placed(&self.memory, start, desc, name)
+            .unwrap();
+        self.state.borrow_mut().cursor = end;
+        texture
+    }
+
+    pub fn reset(&self) {
+        self.state.borrow_mut().cursor = 0;
+    }
+}
+
+impl Drop for TextureAllocator<'_> {
+    fn drop(&mut self) {
+        self.device.destroy_memory_block(self.memory);
+    }
+}
+
+struct GBuffer {
+    extent: rhi::Extent2D,
+    albedo: rhi::Texture,
+    normal_roughness: rhi::Texture,
+    depth: rhi::Texture,
+    albedo_view: rhi::TargetView,
+    normal_roughness_view: rhi::TargetView,
+    depth_view: rhi::TargetView,
+}
+
+impl GBuffer {
+    pub fn create(
+        enc: &rhi::CmdEncoder<'_, rhi::state::Active>,
+        extent: rhi::Extent2D,
+        allocator: &TextureAllocator<'_>,
+        descriptor_heap: &rhi::DescriptorHeap,
+    ) -> Self {
+        let albedo_desc = rhi::TextureDesc::new_default_2d(extent.width, extent.height)
+            .format(rhi::PixelFormat::RGBA8Unorm)
+            .usage(rhi::TextureUsageFlags::COLOR_ATTACHMENT | rhi::TextureUsageFlags::SAMPLED);
+        let normal_roughenss_desc = rhi::TextureDesc::new_default_2d(extent.width, extent.height)
+            .format(rhi::PixelFormat::RGBA16Float)
+            .usage(rhi::TextureUsageFlags::COLOR_ATTACHMENT | rhi::TextureUsageFlags::SAMPLED);
+        let depth_desc = rhi::TextureDesc::new_default_2d(extent.width, extent.height)
+            .format(rhi::PixelFormat::D32Float)
+            .usage(rhi::TextureUsageFlags::DEPTH_STENCIL_ATTACHMENT | rhi::TextureUsageFlags::SAMPLED);
+
+        let albedo = allocator.allocate(&albedo_desc, "albedo");
+        let normal_roughness = allocator.allocate(&normal_roughenss_desc, "normal_roughness");
+        let depth = allocator.allocate(&depth_desc, "depth");
+
+        enc.unifiy_texture_layout(&albedo, rhi::TextureAspect::Color);
+        enc.unifiy_texture_layout(&normal_roughness, rhi::TextureAspect::Color);
+        enc.unifiy_texture_layout(&depth, rhi::TextureAspect::Depth);
+
+        let albedo_view_desc = rhi::TextureViewDesc::new_default_range(&albedo, rhi::TextureAspect::Color);
+        let normal_roughness_view_desc =
+            rhi::TextureViewDesc::new_default_range(&normal_roughness, rhi::TextureAspect::Color);
+        let depth_view_desc = rhi::TextureViewDesc::new_default_range(&depth, rhi::TextureAspect::Depth);
+
+        let device = allocator.device;
+        let albedo_view = device.create_target_view(&albedo, &albedo_view_desc);
+        let normal_roughness_view = device.create_target_view(&normal_roughness, &normal_roughness_view_desc);
+        let depth_view = device.create_target_view(&depth, &depth_view_desc);
+
+        descriptor_heap
+            .write_texture_descriptor(0, &albedo_view_desc, rhi::TextureDescriptorKind::Sampled)
+            .unwrap();
+        descriptor_heap
+            .write_texture_descriptor(1, &normal_roughness_view_desc, rhi::TextureDescriptorKind::Sampled)
+            .unwrap();
+        descriptor_heap
+            .write_texture_descriptor(2, &depth_view_desc, rhi::TextureDescriptorKind::Sampled)
+            .unwrap();
+
+        Self {
+            extent,
+            albedo,
+            normal_roughness,
+            depth,
+            albedo_view,
+            normal_roughness_view,
+            depth_view,
+        }
+    }
+
+    pub fn destroy(self, device: &rhi::Device) {
+        device.destory_target_view(self.albedo_view);
+        device.destory_target_view(self.normal_roughness_view);
+        device.destory_target_view(self.depth_view);
+        device.destory_texture(self.albedo);
+        device.destory_texture(self.normal_roughness);
+        device.destory_texture(self.depth);
     }
 }

@@ -669,7 +669,7 @@ impl Swapchain {
 }
 
 impl TargetView {
-    pub fn from_frame(frame: &SwapchainFrame) -> Self {
+    pub fn from_swapchain_frame(frame: &SwapchainFrame) -> Self {
         Self {
             handle: frame.view,
             format: frame.format,

@@ -5,7 +5,7 @@ use thiserror::Error;
 use tracing::debug;
 
 use crate::core::{
-    AccessFlags, StageFlags, Texture, TextureAspect,
+    AccessFlags, DescriptorHeap, DescriptorHeapKind, StageFlags, Texture, TextureAspect,
     device::DeviceShared,
     pipeline::{DepthStencilState, Pipeline, RenderingDesc, Scissor, Viewport},
     resource::BufferSlice,
@@ -397,6 +397,24 @@ impl CmdEncoder<'_, state::Active> {
         let device = &self.inner.queue.device;
         let buffer = self.inner.buffer;
         unsafe { device.extensions.descriptor_heap.cmd_push_data(buffer, &root_info) };
+    }
+
+    pub fn bind_descriptor_heap(&self, heap: &DescriptorHeap) {
+        let buffer = self.inner.buffer;
+        let extension = &self.inner.queue.device.extensions.descriptor_heap;
+
+        let bind_info = vk::BindHeapInfoEXT::default()
+            .heap_range(vk::DeviceAddressRangeKHR {
+                address: heap.buffer.device_address,
+                size: heap.buffer.size as u64,
+            })
+            .reserved_range_offset(heap.reserved.start)
+            .reserved_range_size(heap.reserved.end - heap.reserved.start);
+
+        match heap.kind {
+            DescriptorHeapKind::Texture => unsafe { extension.cmd_bind_resource_heap(buffer, &bind_info) },
+            DescriptorHeapKind::Sampler => unsafe { extension.cmd_bind_sampler_heap(buffer, &bind_info) },
+        }
     }
 
     pub fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {

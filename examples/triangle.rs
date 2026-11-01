@@ -92,12 +92,12 @@ fn main() {
         enc.swapchain_frame_acquire_barrier(&swapchain_frame);
         enc.begin_rendering(rhi::RenderingDesc {
             area: viewport,
-            colors: &[rhi::ColorTarget::new(
-                rhi::TargetView::from_frame(&swapchain_frame),
-                rhi::LoadOp::Clear,
-                rhi::StoreOp::Store,
-                rhi::ClearColor::EMPTY,
-            )],
+            colors: &[rhi::ColorTarget {
+                view: rhi::TargetView::from_swapchain_frame(&swapchain_frame),
+                load: rhi::LoadOp::Clear,
+                store: rhi::StoreOp::Store,
+                clear: rhi::ClearColor::EMPTY,
+            }],
             depth: None,
             stencil: None,
         });

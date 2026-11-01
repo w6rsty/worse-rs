@@ -1,17 +1,18 @@
+#include "worse.slang"
+
 struct Particle {
     float3 position;
     float3 velocity;
 };
 
-struct BasePassRoot {
+struct GBufferRoot {
     float4x4 view_projection;
     float4 orientation;
     Particle* particles;
     uint2 padding;
 };
 
-[[vk::binding(0, 0)]]
-ConstantBuffer<BasePassRoot> root;
+ROOT_ARGUMENT(GBufferRoot, root)
 
 float3 rotate_by_quaternion(float3 value, float4 orientation) {
     float3 axis = orientation.xyz;
@@ -21,6 +22,16 @@ float3 rotate_by_quaternion(float3 value, float4 orientation) {
 struct VertexOutput {
     float4 position : SV_Position;
     nointerpolation float velocity;
+    float3 normal;
+};
+
+static const float3 cube_normals[6] = {
+    float3(-1.0f, 0.0f, 0.0f),
+    float3(0.0f, 0.0f, -1.0f),
+    float3(0.0f, -1.0f, 0.0f),
+    float3(0.0f, 1.0f, 0.0f),
+    float3(1.0f, 0.0f, 0.0f),
+    float3(0.0f, 0.0f, 1.0f),
 };
 
 [shader("mesh")]
@@ -30,32 +41,40 @@ void mesh_main(
     uint3 group_id: SV_GroupID,
     uint thread_index: SV_GroupIndex,
     out vertices VertexOutput vertices[24],
-    out indices uint3 triangles[12]
-) {
+    out indices uint3 triangles[12]) {
     SetMeshOutputCounts(24, 12);
 
     Particle particle = root.particles[group_id.x];
 
     if (thread_index < 24) {
-        float3 cube_position = float3(
-            float((0x6fc6c0u >> thread_index) & 1u),
-            float((0xc3f06cu >> thread_index) & 1u),
-            float((0xf66c06u >> thread_index) & 1u)) * 0.02f - 0.01f;
-        float3 world_position = rotate_by_quaternion(particle.position + cube_position, root.orientation);
+        float3 cube_position =
+            float3(
+                float((0x6fc6c0u >> thread_index) & 1u),
+                float((0xc3f06cu >> thread_index) & 1u),
+                float((0xf66c06u >> thread_index) & 1u)) *
+                0.02f -
+            0.01f;
+        float3 world_position           = rotate_by_quaternion(particle.position + cube_position, root.orientation);
         vertices[thread_index].position = mul(root.view_projection, float4(world_position, 1.0f));
         vertices[thread_index].velocity = length(particle.velocity);
+        vertices[thread_index].normal = rotate_by_quaternion(cube_normals[thread_index >> 2u], root.orientation);
     }
 
     if (thread_index < 12) {
-        uint base_vertex = (thread_index >> 1u) * 4u;
+        uint base_vertex        = (thread_index >> 1u) * 4u;
         triangles[thread_index] = (thread_index & 1u) == 0u
-            ? uint3(base_vertex, base_vertex + 1u, base_vertex + 2u)
-            : uint3(base_vertex + 2u, base_vertex + 3u, base_vertex);
+                                      ? uint3(base_vertex, base_vertex + 1u, base_vertex + 2u)
+                                      : uint3(base_vertex + 2u, base_vertex + 3u, base_vertex);
     }
 }
 
+struct FragmentOutput {
+    float4 albedo : SV_Target0;
+    float4 normal_roughness : SV_Target1;
+}
+
 [shader("fragment")]
-float4 fragment_main(VertexOutput input) : SV_Target0 {
+FragmentOutput fragment_main(VertexOutput input) {
     float wavelength = lerp(380.0f, 780.0f, saturate(input.velocity / 0.15f));
     float3 color;
 
@@ -80,5 +99,8 @@ float4 fragment_main(VertexOutput input) : SV_Target0 {
         intensity = 0.3f + 0.7f * (780.0f - wavelength) / 80.0f;
     }
 
-    return float4(color * intensity, 1.0f);
+    FragmentOutput output   = {};
+    output.albedo           = float4(color * intensity, 1.0f);
+    output.normal_roughness = float4(normalize(input.normal), 0.55f);
+    return output;
 }

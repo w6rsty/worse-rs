@@ -459,7 +459,7 @@ impl ClearColor {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ColorTarget {
     pub view: TargetView,
     pub load: LoadOp,
@@ -467,18 +467,7 @@ pub struct ColorTarget {
     pub clear: ClearColor,
 }
 
-impl ColorTarget {
-    pub fn new(view: TargetView, load: LoadOp, store: StoreOp, clear: ClearColor) -> Self {
-        Self {
-            view,
-            load,
-            store,
-            clear,
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct DepthTarget {
     pub view: TargetView,
     pub load: LoadOp,
@@ -486,7 +475,7 @@ pub struct DepthTarget {
     pub clear: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct StencilTarget {
     pub view: TargetView,
     pub load: LoadOp,
