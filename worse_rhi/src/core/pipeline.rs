@@ -16,6 +16,7 @@ use crate::core::{
 
 pub const MAX_ENTRY_NAME_LENGTH: usize = 64;
 pub const MAX_COLOR_TARGETS: usize = 8;
+pub const MAX_ROOTS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum Error {
@@ -177,22 +178,29 @@ pub struct Pipeline {
     pub(crate) kind: PipelineKind,
 }
 
+fn root_mappings() -> [vk::DescriptorSetAndBindingMappingEXT<'static>; MAX_ROOTS] {
+    let mut mappings = [vk::DescriptorSetAndBindingMappingEXT::default(); MAX_ROOTS];
+    for (index, mapping) in mappings.iter_mut().enumerate() {
+        mapping.descriptor_set = 0;
+        mapping.first_binding = index as u32;
+        mapping.binding_count = 1;
+        mapping.resource_mask = vk::SpirvResourceTypeFlagsEXT::UNIFORM_BUFFER;
+        mapping.source = vk::DescriptorMappingSourceEXT::PUSH_ADDRESS;
+        mapping.source_data = {
+            let mut push_address_data = vk::DescriptorMappingSourceDataEXT::default();
+            push_address_data.push_address_offset = (index * std::mem::size_of::<vk::DeviceAddress>()) as u32;
+            push_address_data
+        };
+    }
+    mappings
+}
+
 impl Device {
     pub fn create_compute_pipeline(&self, compute: ShaderStage) -> Result<Pipeline, Error> {
-        let root_mapping = [vk::DescriptorSetAndBindingMappingEXT::default()
-            .descriptor_set(0)
-            .first_binding(0)
-            .binding_count(1)
-            .resource_mask(vk::SpirvResourceTypeFlagsEXT::UNIFORM_BUFFER)
-            .source(vk::DescriptorMappingSourceEXT::PUSH_ADDRESS)
-            .source_data({
-                let mut push_address_data = vk::DescriptorMappingSourceDataEXT::default();
-                push_address_data.push_address_offset = 0;
-                push_address_data
-            })];
+        let root_mappings = root_mappings();
 
         let mut module_info = vk::ShaderModuleCreateInfo::default().code(compute.code);
-        let mut mapping_info = vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&root_mapping);
+        let mut mapping_info = vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&root_mappings);
 
         let entry_name = string_to_cstring_lossy(compute.entry);
         let stage_info = vk::PipelineShaderStageCreateInfo::default()
@@ -231,17 +239,7 @@ impl Device {
     }
 
     pub fn create_raster_pipeline(&self, desc: RasterPipelineDesc) -> Result<Pipeline, Error> {
-        let root_mappings = [vk::DescriptorSetAndBindingMappingEXT::default()
-            .descriptor_set(0)
-            .first_binding(0)
-            .binding_count(1)
-            .resource_mask(vk::SpirvResourceTypeFlagsEXT::UNIFORM_BUFFER)
-            .source(vk::DescriptorMappingSourceEXT::PUSH_ADDRESS)
-            .source_data({
-                let mut push_address_data = vk::DescriptorMappingSourceDataEXT::default();
-                push_address_data.push_address_offset = 0;
-                push_address_data
-            })];
+        let root_mappings = root_mappings();
 
         const MAX_STAGE: usize = 3;
         struct StageInfoSource<'a> {
