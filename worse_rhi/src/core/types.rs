@@ -65,67 +65,67 @@ pub enum PixelFormat {
     Undefined,
 }
 
-impl PixelFormat {
-    pub const fn to_vk(self) -> vk::Format {
-        match self {
-            Self::R8Srgb => vk::Format::R8_SRGB,
-            Self::RG8Srgb => vk::Format::R8G8_SRGB,
-            Self::RGBA8Srgb => vk::Format::R8G8B8A8_SRGB,
-            Self::BGRA8Srgb => vk::Format::B8G8R8A8_SRGB,
+impl From<PixelFormat> for vk::Format {
+    fn from(value: PixelFormat) -> Self {
+        match value {
+            PixelFormat::R8Srgb => vk::Format::R8_SRGB,
+            PixelFormat::RG8Srgb => vk::Format::R8G8_SRGB,
+            PixelFormat::RGBA8Srgb => vk::Format::R8G8B8A8_SRGB,
+            PixelFormat::BGRA8Srgb => vk::Format::B8G8R8A8_SRGB,
 
-            Self::RGBA4Unorm => vk::Format::R4G4B4A4_UNORM_PACK16,
-            Self::R5G5B5A1Unorm => vk::Format::R5G5B5A1_UNORM_PACK16,
-            Self::R5G6B5Unorm => vk::Format::R5G6B5_UNORM_PACK16,
+            PixelFormat::RGBA4Unorm => vk::Format::R4G4B4A4_UNORM_PACK16,
+            PixelFormat::R5G5B5A1Unorm => vk::Format::R5G5B5A1_UNORM_PACK16,
+            PixelFormat::R5G6B5Unorm => vk::Format::R5G6B5_UNORM_PACK16,
 
-            Self::R8Unorm => vk::Format::R8_UNORM,
-            Self::RG8Unorm => vk::Format::R8G8_UNORM,
-            Self::RGBA8Unorm => vk::Format::R8G8B8A8_UNORM,
-            Self::BGRA8Unorm => vk::Format::B8G8R8A8_UNORM,
-            Self::R16Unorm => vk::Format::R16_UNORM,
-            Self::RG16Unorm => vk::Format::R16G16_UNORM,
-            Self::RGBA16Unorm => vk::Format::R16G16B16A16_UNORM,
+            PixelFormat::R8Unorm => vk::Format::R8_UNORM,
+            PixelFormat::RG8Unorm => vk::Format::R8G8_UNORM,
+            PixelFormat::RGBA8Unorm => vk::Format::R8G8B8A8_UNORM,
+            PixelFormat::BGRA8Unorm => vk::Format::B8G8R8A8_UNORM,
+            PixelFormat::R16Unorm => vk::Format::R16_UNORM,
+            PixelFormat::RG16Unorm => vk::Format::R16G16_UNORM,
+            PixelFormat::RGBA16Unorm => vk::Format::R16G16B16A16_UNORM,
 
-            Self::R8UInt => vk::Format::R8_UINT,
-            Self::RG8UInt => vk::Format::R8G8_UINT,
-            Self::RGBA8UInt => vk::Format::R8G8B8A8_UINT,
-            Self::BGRA8UInt => vk::Format::B8G8R8A8_UINT,
-            Self::R16UInt => vk::Format::R16_UINT,
-            Self::RG16UInt => vk::Format::R16G16_UINT,
-            Self::RGBA16UInt => vk::Format::R16G16B16A16_UINT,
-            Self::R32UInt => vk::Format::R32_UINT,
-            Self::RG32UInt => vk::Format::R32G32_UINT,
-            Self::RGB32UInt => vk::Format::R32G32B32_UINT,
-            Self::RGBA32UInt => vk::Format::R32G32B32A32_UINT,
+            PixelFormat::R8UInt => vk::Format::R8_UINT,
+            PixelFormat::RG8UInt => vk::Format::R8G8_UINT,
+            PixelFormat::RGBA8UInt => vk::Format::R8G8B8A8_UINT,
+            PixelFormat::BGRA8UInt => vk::Format::B8G8R8A8_UINT,
+            PixelFormat::R16UInt => vk::Format::R16_UINT,
+            PixelFormat::RG16UInt => vk::Format::R16G16_UINT,
+            PixelFormat::RGBA16UInt => vk::Format::R16G16B16A16_UINT,
+            PixelFormat::R32UInt => vk::Format::R32_UINT,
+            PixelFormat::RG32UInt => vk::Format::R32G32_UINT,
+            PixelFormat::RGB32UInt => vk::Format::R32G32B32_UINT,
+            PixelFormat::RGBA32UInt => vk::Format::R32G32B32A32_UINT,
 
-            Self::R16Float => vk::Format::R16_SFLOAT,
-            Self::RG16Float => vk::Format::R16G16_SFLOAT,
-            Self::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
-            Self::R32Float => vk::Format::R32_SFLOAT,
-            Self::RG32Float => vk::Format::R32G32_SFLOAT,
-            Self::RGB32Float => vk::Format::R32G32B32_SFLOAT,
-            Self::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
+            PixelFormat::R16Float => vk::Format::R16_SFLOAT,
+            PixelFormat::RG16Float => vk::Format::R16G16_SFLOAT,
+            PixelFormat::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
+            PixelFormat::R32Float => vk::Format::R32_SFLOAT,
+            PixelFormat::RG32Float => vk::Format::R32G32_SFLOAT,
+            PixelFormat::RGB32Float => vk::Format::R32G32B32_SFLOAT,
+            PixelFormat::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
 
-            Self::RGB10A2Unorm => vk::Format::A2B10G10R10_UNORM_PACK32,
-            Self::RG11B10Float => vk::Format::B10G11R11_UFLOAT_PACK32,
+            PixelFormat::RGB10A2Unorm => vk::Format::A2B10G10R10_UNORM_PACK32,
+            PixelFormat::RG11B10Float => vk::Format::B10G11R11_UFLOAT_PACK32,
 
-            Self::D16Unorm => vk::Format::D16_UNORM,
-            Self::D24UnormS8UInt => vk::Format::D24_UNORM_S8_UINT,
-            Self::D32Float => vk::Format::D32_SFLOAT,
-            Self::S8UInt => vk::Format::S8_UINT,
-            Self::D32FloatS8UInt => vk::Format::D32_SFLOAT_S8_UINT,
+            PixelFormat::D16Unorm => vk::Format::D16_UNORM,
+            PixelFormat::D24UnormS8UInt => vk::Format::D24_UNORM_S8_UINT,
+            PixelFormat::D32Float => vk::Format::D32_SFLOAT,
+            PixelFormat::S8UInt => vk::Format::S8_UINT,
+            PixelFormat::D32FloatS8UInt => vk::Format::D32_SFLOAT_S8_UINT,
 
-            Self::EACRG => vk::Format::EAC_R11G11_UNORM_BLOCK,
-            Self::ASTC4X4Srgb => vk::Format::ASTC_4X4_SRGB_BLOCK,
-            Self::ASTC4X4Unorm => vk::Format::ASTC_4X4_UNORM_BLOCK,
-            Self::BC3Srgb => vk::Format::BC3_SRGB_BLOCK,
-            Self::BC3Unorm => vk::Format::BC3_UNORM_BLOCK,
-            Self::BC5RG => vk::Format::BC5_UNORM_BLOCK,
-            Self::BC6HUFloat => vk::Format::BC6H_UFLOAT_BLOCK,
-            Self::BC6HSFloat => vk::Format::BC6H_SFLOAT_BLOCK,
-            Self::BC7Srgb => vk::Format::BC7_SRGB_BLOCK,
-            Self::BC7Unorm => vk::Format::BC7_UNORM_BLOCK,
+            PixelFormat::EACRG => vk::Format::EAC_R11G11_UNORM_BLOCK,
+            PixelFormat::ASTC4X4Srgb => vk::Format::ASTC_4X4_SRGB_BLOCK,
+            PixelFormat::ASTC4X4Unorm => vk::Format::ASTC_4X4_UNORM_BLOCK,
+            PixelFormat::BC3Srgb => vk::Format::BC3_SRGB_BLOCK,
+            PixelFormat::BC3Unorm => vk::Format::BC3_UNORM_BLOCK,
+            PixelFormat::BC5RG => vk::Format::BC5_UNORM_BLOCK,
+            PixelFormat::BC6HUFloat => vk::Format::BC6H_UFLOAT_BLOCK,
+            PixelFormat::BC6HSFloat => vk::Format::BC6H_SFLOAT_BLOCK,
+            PixelFormat::BC7Srgb => vk::Format::BC7_SRGB_BLOCK,
+            PixelFormat::BC7Unorm => vk::Format::BC7_UNORM_BLOCK,
 
-            Self::Undefined => vk::Format::UNDEFINED,
+            PixelFormat::Undefined => vk::Format::UNDEFINED,
         }
     }
 }
@@ -135,10 +135,10 @@ pub enum ColorSpace {
     SrgbNonLinear,
 }
 
-impl ColorSpace {
-    pub(crate) fn to_vk(self) -> vk::ColorSpaceKHR {
-        match self {
-            Self::SrgbNonLinear => vk::ColorSpaceKHR::SRGB_NONLINEAR,
+impl From<ColorSpace> for vk::ColorSpaceKHR {
+    fn from(value: ColorSpace) -> Self {
+        match value {
+            ColorSpace::SrgbNonLinear => vk::ColorSpaceKHR::SRGB_NONLINEAR,
         }
     }
 }
@@ -160,41 +160,43 @@ bitflags::bitflags! {
     }
 }
 
-impl BufferUsageFlags {
-    pub(crate) fn to_vk(self) -> vk::BufferUsageFlags {
+impl From<BufferUsageFlags> for vk::BufferUsageFlags {
+    fn from(value: BufferUsageFlags) -> Self {
         let mut result = vk::BufferUsageFlags::empty();
 
-        if self.contains(Self::TRANSFER_SRC) {
+        if value.contains(BufferUsageFlags::TRANSFER_SRC) {
             result |= vk::BufferUsageFlags::TRANSFER_SRC;
         }
-        if self.contains(Self::TRANSFER_DST) {
+        if value.contains(BufferUsageFlags::TRANSFER_DST) {
             result |= vk::BufferUsageFlags::TRANSFER_DST;
         }
-        if self.contains(Self::UNIFORM) {
+        if value.contains(BufferUsageFlags::UNIFORM) {
             result |= vk::BufferUsageFlags::UNIFORM_BUFFER;
         }
-        if self.contains(Self::STORAGE) {
+        if value.contains(BufferUsageFlags::STORAGE) {
             result |= vk::BufferUsageFlags::STORAGE_BUFFER;
         }
-        if self.contains(Self::INDEX) {
+        if value.contains(BufferUsageFlags::INDEX) {
             result |= vk::BufferUsageFlags::INDEX_BUFFER;
         }
-        if self.contains(Self::VERTEX) {
+        if value.contains(BufferUsageFlags::VERTEX) {
             result |= vk::BufferUsageFlags::VERTEX_BUFFER;
         }
-        if self.contains(Self::INDIRECT) {
+        if value.contains(BufferUsageFlags::INDIRECT) {
             result |= vk::BufferUsageFlags::INDIRECT_BUFFER;
         }
-        if self.contains(Self::DESCRIPTOR_HEAP) {
+        if value.contains(BufferUsageFlags::DESCRIPTOR_HEAP) {
             result |= vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT;
         }
-        if self.contains(Self::SHADER_DEVICE_ADDRESS) {
+        if value.contains(BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
             result |= vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
         }
 
         result
     }
+}
 
+impl BufferUsageFlags {
     pub fn universal_bits() -> Self {
         Self::SHADER_DEVICE_ADDRESS | Self::INDEX | Self::INDIRECT | Self::TRANSFER_SRC | Self::TRANSFER_DST
     }
@@ -210,23 +212,28 @@ pub enum TextureDimension {
     CubeArray,
 }
 
-impl TextureDimension {
-    pub(crate) fn to_vk_image_type(self) -> vk::ImageType {
-        match self {
-            Self::Dimension1D => vk::ImageType::TYPE_1D,
-            Self::Dimension3D => vk::ImageType::TYPE_3D,
-            Self::Dimension2D | Self::Cube | Self::Dimension2DArray | Self::CubeArray => vk::ImageType::TYPE_2D,
+impl From<TextureDimension> for vk::ImageType {
+    fn from(value: TextureDimension) -> Self {
+        match value {
+            TextureDimension::Dimension1D => vk::ImageType::TYPE_1D,
+            TextureDimension::Dimension3D => vk::ImageType::TYPE_3D,
+            TextureDimension::Dimension2D
+            | TextureDimension::Cube
+            | TextureDimension::Dimension2DArray
+            | TextureDimension::CubeArray => vk::ImageType::TYPE_2D,
         }
     }
+}
 
-    pub(crate) fn to_vk_image_view_type(self) -> vk::ImageViewType {
-        match self {
-            Self::Dimension1D => vk::ImageViewType::TYPE_1D,
-            Self::Dimension2D => vk::ImageViewType::TYPE_2D,
-            Self::Dimension3D => vk::ImageViewType::TYPE_3D,
-            Self::Cube => vk::ImageViewType::CUBE,
-            Self::Dimension2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
-            Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
+impl From<TextureDimension> for vk::ImageViewType {
+    fn from(value: TextureDimension) -> Self {
+        match value {
+            TextureDimension::Dimension1D => vk::ImageViewType::TYPE_1D,
+            TextureDimension::Dimension2D => vk::ImageViewType::TYPE_2D,
+            TextureDimension::Dimension3D => vk::ImageViewType::TYPE_3D,
+            TextureDimension::Cube => vk::ImageViewType::CUBE,
+            TextureDimension::Dimension2DArray => vk::ImageViewType::TYPE_2D_ARRAY,
+            TextureDimension::CubeArray => vk::ImageViewType::CUBE_ARRAY,
         }
     }
 }
@@ -243,26 +250,26 @@ bitflags::bitflags! {
     }
 }
 
-impl TextureUsageFlags {
-    pub(crate) fn to_vk(self) -> vk::ImageUsageFlags {
+impl From<TextureUsageFlags> for vk::ImageUsageFlags {
+    fn from(value: TextureUsageFlags) -> Self {
         let mut result = vk::ImageUsageFlags::empty();
 
-        if self.contains(Self::SAMPLED) {
+        if value.contains(TextureUsageFlags::SAMPLED) {
             result |= vk::ImageUsageFlags::SAMPLED;
         }
-        if self.contains(Self::STORAGE) {
+        if value.contains(TextureUsageFlags::STORAGE) {
             result |= vk::ImageUsageFlags::STORAGE;
         }
-        if self.contains(Self::COLOR_ATTACHMENT) {
+        if value.contains(TextureUsageFlags::COLOR_ATTACHMENT) {
             result |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
         }
-        if self.contains(Self::DEPTH_STENCIL_ATTACHMENT) {
+        if value.contains(TextureUsageFlags::DEPTH_STENCIL_ATTACHMENT) {
             result |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
         }
-        if self.contains(Self::TRANSFER_SRC) {
+        if value.contains(TextureUsageFlags::TRANSFER_SRC) {
             result |= vk::ImageUsageFlags::TRANSFER_SRC;
         }
-        if self.contains(Self::TRANSFER_DST) {
+        if value.contains(TextureUsageFlags::TRANSFER_DST) {
             result |= vk::ImageUsageFlags::TRANSFER_DST;
         }
 
@@ -290,16 +297,16 @@ pub enum SampleCount {
     Count64 = 0b1000000,
 }
 
-impl SampleCount {
-    pub(crate) fn to_vk(self) -> vk::SampleCountFlags {
-        match self {
-            Self::Count1 => vk::SampleCountFlags::TYPE_1,
-            Self::Count2 => vk::SampleCountFlags::TYPE_2,
-            Self::Count4 => vk::SampleCountFlags::TYPE_4,
-            Self::Count8 => vk::SampleCountFlags::TYPE_8,
-            Self::Count16 => vk::SampleCountFlags::TYPE_16,
-            Self::Count32 => vk::SampleCountFlags::TYPE_32,
-            Self::Count64 => vk::SampleCountFlags::TYPE_64,
+impl From<SampleCount> for vk::SampleCountFlags {
+    fn from(value: SampleCount) -> Self {
+        match value {
+            SampleCount::Count1 => vk::SampleCountFlags::TYPE_1,
+            SampleCount::Count2 => vk::SampleCountFlags::TYPE_2,
+            SampleCount::Count4 => vk::SampleCountFlags::TYPE_4,
+            SampleCount::Count8 => vk::SampleCountFlags::TYPE_8,
+            SampleCount::Count16 => vk::SampleCountFlags::TYPE_16,
+            SampleCount::Count32 => vk::SampleCountFlags::TYPE_32,
+            SampleCount::Count64 => vk::SampleCountFlags::TYPE_64,
         }
     }
 }
@@ -310,18 +317,20 @@ pub enum TextureDescriptorKind {
     Storage,
 }
 
-impl TextureDescriptorKind {
-    pub(crate) fn to_vk_descriptor_type(self) -> vk::DescriptorType {
-        match self {
-            Self::Sampled => vk::DescriptorType::SAMPLED_IMAGE,
-            Self::Storage => vk::DescriptorType::STORAGE_IMAGE,
+impl From<TextureDescriptorKind> for vk::DescriptorType {
+    fn from(value: TextureDescriptorKind) -> Self {
+        match value {
+            TextureDescriptorKind::Sampled => vk::DescriptorType::SAMPLED_IMAGE,
+            TextureDescriptorKind::Storage => vk::DescriptorType::STORAGE_IMAGE,
         }
     }
+}
 
-    pub(crate) fn to_vk_usage(self) -> vk::ImageUsageFlags {
-        match self {
-            Self::Sampled => vk::ImageUsageFlags::SAMPLED,
-            Self::Storage => vk::ImageUsageFlags::STORAGE,
+impl From<TextureDescriptorKind> for vk::ImageUsageFlags {
+    fn from(value: TextureDescriptorKind) -> Self {
+        match value {
+            TextureDescriptorKind::Sampled => vk::ImageUsageFlags::SAMPLED,
+            TextureDescriptorKind::Storage => vk::ImageUsageFlags::STORAGE,
         }
     }
 }
@@ -332,18 +341,20 @@ pub enum FilterKind {
     Linear,
 }
 
-impl FilterKind {
-    pub(crate) fn to_vk(self) -> vk::Filter {
-        match self {
-            Self::Nearest => vk::Filter::NEAREST,
-            Self::Linear => vk::Filter::LINEAR,
+impl From<FilterKind> for vk::Filter {
+    fn from(value: FilterKind) -> Self {
+        match value {
+            FilterKind::Nearest => vk::Filter::NEAREST,
+            FilterKind::Linear => vk::Filter::LINEAR,
         }
     }
+}
 
-    pub(crate) fn to_vk_mipmap_mode(self) -> vk::SamplerMipmapMode {
-        match self {
-            Self::Nearest => vk::SamplerMipmapMode::NEAREST,
-            Self::Linear => vk::SamplerMipmapMode::LINEAR,
+impl From<FilterKind> for vk::SamplerMipmapMode {
+    fn from(value: FilterKind) -> Self {
+        match value {
+            FilterKind::Nearest => vk::SamplerMipmapMode::NEAREST,
+            FilterKind::Linear => vk::SamplerMipmapMode::LINEAR,
         }
     }
 }
@@ -355,12 +366,12 @@ pub enum AddressMode {
     ClampToEdge,
 }
 
-impl AddressMode {
-    pub(crate) fn to_vk(self) -> vk::SamplerAddressMode {
-        match self {
-            Self::Repeat => vk::SamplerAddressMode::REPEAT,
-            Self::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
-            Self::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+impl From<AddressMode> for vk::SamplerAddressMode {
+    fn from(value: AddressMode) -> Self {
+        match value {
+            AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+            AddressMode::MirroredRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+            AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
         }
     }
 }
@@ -377,17 +388,17 @@ pub enum CompareOp {
     Always,
 }
 
-impl CompareOp {
-    pub fn to_vk(self) -> vk::CompareOp {
-        match self {
-            Self::Never => vk::CompareOp::NEVER,
-            Self::Less => vk::CompareOp::LESS,
-            Self::Equal => vk::CompareOp::EQUAL,
-            Self::LessQual => vk::CompareOp::LESS_OR_EQUAL,
-            Self::Greater => vk::CompareOp::GREATER,
-            Self::NotEqual => vk::CompareOp::NOT_EQUAL,
-            Self::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
-            Self::Always => vk::CompareOp::ALWAYS,
+impl From<CompareOp> for vk::CompareOp {
+    fn from(value: CompareOp) -> Self {
+        match value {
+            CompareOp::Never => vk::CompareOp::NEVER,
+            CompareOp::Less => vk::CompareOp::LESS,
+            CompareOp::Equal => vk::CompareOp::EQUAL,
+            CompareOp::LessQual => vk::CompareOp::LESS_OR_EQUAL,
+            CompareOp::Greater => vk::CompareOp::GREATER,
+            CompareOp::NotEqual => vk::CompareOp::NOT_EQUAL,
+            CompareOp::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
+            CompareOp::Always => vk::CompareOp::ALWAYS,
         }
     }
 }
@@ -398,11 +409,11 @@ pub enum PolygonMode {
     Line,
 }
 
-impl PolygonMode {
-    pub(crate) fn to_vk(self) -> vk::PolygonMode {
-        match self {
-            Self::Fill => vk::PolygonMode::FILL,
-            Self::Line => vk::PolygonMode::LINE,
+impl From<PolygonMode> for vk::PolygonMode {
+    fn from(value: PolygonMode) -> Self {
+        match value {
+            PolygonMode::Fill => vk::PolygonMode::FILL,
+            PolygonMode::Line => vk::PolygonMode::LINE,
         }
     }
 }
@@ -414,12 +425,12 @@ pub enum CullMode {
     Back,
 }
 
-impl CullMode {
-    pub(crate) fn to_vk(self) -> vk::CullModeFlags {
-        match self {
-            Self::None => vk::CullModeFlags::NONE,
-            Self::Front => vk::CullModeFlags::FRONT,
-            Self::Back => vk::CullModeFlags::BACK,
+impl From<CullMode> for vk::CullModeFlags {
+    fn from(value: CullMode) -> Self {
+        match value {
+            CullMode::None => vk::CullModeFlags::NONE,
+            CullMode::Front => vk::CullModeFlags::FRONT,
+            CullMode::Back => vk::CullModeFlags::BACK,
         }
     }
 }
@@ -430,11 +441,11 @@ pub enum FrontFace {
     CounterClockwise,
 }
 
-impl FrontFace {
-    pub(crate) fn to_vk(self) -> vk::FrontFace {
-        match self {
-            Self::Clockwise => vk::FrontFace::CLOCKWISE,
-            Self::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
+impl From<FrontFace> for vk::FrontFace {
+    fn from(value: FrontFace) -> Self {
+        match value {
+            FrontFace::Clockwise => vk::FrontFace::CLOCKWISE,
+            FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
         }
     }
 }
@@ -454,20 +465,20 @@ pub enum BlendFactor {
     SourceAlphaStaurate,
 }
 
-impl BlendFactor {
-    pub(crate) fn to_vk(self) -> vk::BlendFactor {
-        match self {
-            Self::Zero => vk::BlendFactor::ZERO,
-            Self::One => vk::BlendFactor::ONE,
-            Self::SourceColor => vk::BlendFactor::SRC_COLOR,
-            Self::OneMinusSourceColor => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
-            Self::DestinationColor => vk::BlendFactor::DST_COLOR,
-            Self::OneMinusDestinationColor => vk::BlendFactor::ONE_MINUS_DST_COLOR,
-            Self::SourceAlpha => vk::BlendFactor::SRC_ALPHA,
-            Self::OneMinusSourceAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-            Self::DestinationAlpha => vk::BlendFactor::DST_ALPHA,
-            Self::OneMinusDestinationAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
-            Self::SourceAlphaStaurate => vk::BlendFactor::SRC_ALPHA_SATURATE,
+impl From<BlendFactor> for vk::BlendFactor {
+    fn from(value: BlendFactor) -> Self {
+        match value {
+            BlendFactor::Zero => vk::BlendFactor::ZERO,
+            BlendFactor::One => vk::BlendFactor::ONE,
+            BlendFactor::SourceColor => vk::BlendFactor::SRC_COLOR,
+            BlendFactor::OneMinusSourceColor => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+            BlendFactor::DestinationColor => vk::BlendFactor::DST_COLOR,
+            BlendFactor::OneMinusDestinationColor => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+            BlendFactor::SourceAlpha => vk::BlendFactor::SRC_ALPHA,
+            BlendFactor::OneMinusSourceAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+            BlendFactor::DestinationAlpha => vk::BlendFactor::DST_ALPHA,
+            BlendFactor::OneMinusDestinationAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+            BlendFactor::SourceAlphaStaurate => vk::BlendFactor::SRC_ALPHA_SATURATE,
         }
     }
 }
@@ -481,14 +492,14 @@ pub enum BlendOp {
     Maximum,
 }
 
-impl BlendOp {
-    pub(crate) fn to_vk(self) -> vk::BlendOp {
-        match self {
-            Self::Add => vk::BlendOp::ADD,
-            Self::Substract => vk::BlendOp::SUBTRACT,
-            Self::ResverseSubract => vk::BlendOp::REVERSE_SUBTRACT,
-            Self::Minimum => vk::BlendOp::MIN,
-            Self::Maximum => vk::BlendOp::MAX,
+impl From<BlendOp> for vk::BlendOp {
+    fn from(value: BlendOp) -> Self {
+        match value {
+            BlendOp::Add => vk::BlendOp::ADD,
+            BlendOp::Substract => vk::BlendOp::SUBTRACT,
+            BlendOp::ResverseSubract => vk::BlendOp::REVERSE_SUBTRACT,
+            BlendOp::Minimum => vk::BlendOp::MIN,
+            BlendOp::Maximum => vk::BlendOp::MAX,
         }
     }
 }
@@ -511,11 +522,11 @@ impl IndexType for u32 {
     const VK_TYPE: vk::IndexType = vk::IndexType::UINT32;
 }
 
-impl IndexKind {
-    pub(crate) fn to_vk(self) -> vk::IndexType {
-        match self {
-            Self::UInt16 => vk::IndexType::UINT16,
-            Self::UInt32 => vk::IndexType::UINT32,
+impl From<IndexKind> for vk::IndexType {
+    fn from(value: IndexKind) -> Self {
+        match value {
+            IndexKind::UInt16 => vk::IndexType::UINT16,
+            IndexKind::UInt32 => vk::IndexType::UINT32,
         }
     }
 }
@@ -527,12 +538,12 @@ pub enum LoadOp {
     Discard,
 }
 
-impl LoadOp {
-    pub(crate) fn to_vk(self) -> vk::AttachmentLoadOp {
-        match self {
-            Self::Load => vk::AttachmentLoadOp::LOAD,
-            Self::Clear => vk::AttachmentLoadOp::CLEAR,
-            Self::Discard => vk::AttachmentLoadOp::DONT_CARE,
+impl From<LoadOp> for vk::AttachmentLoadOp {
+    fn from(value: LoadOp) -> Self {
+        match value {
+            LoadOp::Load => vk::AttachmentLoadOp::LOAD,
+            LoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
+            LoadOp::Discard => vk::AttachmentLoadOp::DONT_CARE,
         }
     }
 }
@@ -543,11 +554,11 @@ pub enum StoreOp {
     Discard,
 }
 
-impl StoreOp {
-    pub(crate) fn to_vk(self) -> vk::AttachmentStoreOp {
-        match self {
-            Self::Store => vk::AttachmentStoreOp::STORE,
-            Self::Discard => vk::AttachmentStoreOp::DONT_CARE,
+impl From<StoreOp> for vk::AttachmentStoreOp {
+    fn from(value: StoreOp) -> Self {
+        match value {
+            StoreOp::Store => vk::AttachmentStoreOp::STORE,
+            StoreOp::Discard => vk::AttachmentStoreOp::DONT_CARE,
         }
     }
 }
@@ -564,17 +575,17 @@ pub enum StencilOp {
     DecrementWrap,
 }
 
-impl StencilOp {
-    pub(crate) fn to_vk(self) -> vk::StencilOp {
-        match self {
-            Self::Keep => vk::StencilOp::KEEP,
-            Self::Zero => vk::StencilOp::ZERO,
-            Self::Replace => vk::StencilOp::REPLACE,
-            Self::IncrementClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
-            Self::DecrementClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
-            Self::Invert => vk::StencilOp::INVERT,
-            Self::IncrementWrap => vk::StencilOp::INCREMENT_AND_WRAP,
-            Self::DecrementWrap => vk::StencilOp::DECREMENT_AND_WRAP,
+impl From<StencilOp> for vk::StencilOp {
+    fn from(value: StencilOp) -> Self {
+        match value {
+            StencilOp::Keep => vk::StencilOp::KEEP,
+            StencilOp::Zero => vk::StencilOp::ZERO,
+            StencilOp::Replace => vk::StencilOp::REPLACE,
+            StencilOp::IncrementClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
+            StencilOp::DecrementClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
+            StencilOp::Invert => vk::StencilOp::INVERT,
+            StencilOp::IncrementWrap => vk::StencilOp::INCREMENT_AND_WRAP,
+            StencilOp::DecrementWrap => vk::StencilOp::DECREMENT_AND_WRAP,
         }
     }
 }
@@ -597,42 +608,42 @@ bitflags::bitflags! {
     }
 }
 
-impl StageFlags {
-    pub(crate) fn to_vk(self) -> vk::PipelineStageFlags2 {
+impl From<StageFlags> for vk::PipelineStageFlags2 {
+    fn from(value: StageFlags) -> Self {
         let mut flags = vk::PipelineStageFlags2::empty();
 
-        if self.contains(Self::INDIRECT) {
+        if value.contains(StageFlags::INDIRECT) {
             flags |= vk::PipelineStageFlags2::DRAW_INDIRECT;
         }
 
-        if self.contains(Self::INDEX_INPUT) {
+        if value.contains(StageFlags::INDEX_INPUT) {
             flags |= vk::PipelineStageFlags2::INDEX_INPUT;
         }
-        if self.contains(Self::VERTEX) {
+        if value.contains(StageFlags::VERTEX) {
             flags |= vk::PipelineStageFlags2::VERTEX_SHADER;
         }
-        if self.contains(Self::MESH) {
+        if value.contains(StageFlags::MESH) {
             flags |= vk::PipelineStageFlags2::MESH_SHADER_EXT;
         }
-        if self.contains(Self::DEPTH_STENCIL_TEST) {
+        if value.contains(StageFlags::DEPTH_STENCIL_TEST) {
             flags |= vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS;
         }
-        if self.contains(Self::FRAGMENT) {
+        if value.contains(StageFlags::FRAGMENT) {
             flags |= vk::PipelineStageFlags2::FRAGMENT_SHADER;
         }
-        if self.contains(Self::COLOR_OUTPUT) {
+        if value.contains(StageFlags::COLOR_OUTPUT) {
             flags |= vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
         }
-        if self.contains(Self::COMPUTE) {
+        if value.contains(StageFlags::COMPUTE) {
             flags |= vk::PipelineStageFlags2::COMPUTE_SHADER;
         }
-        if self.contains(Self::TRANSFER) {
+        if value.contains(StageFlags::TRANSFER) {
             flags |= vk::PipelineStageFlags2::TRANSFER;
         }
-        if self.contains(Self::HOST) {
+        if value.contains(StageFlags::HOST) {
             flags |= vk::PipelineStageFlags2::HOST;
         }
-        if self.contains(Self::ALL_COMMANDS) {
+        if value.contains(StageFlags::ALL_COMMANDS) {
             flags |= vk::PipelineStageFlags2::ALL_COMMANDS;
         }
 
@@ -659,41 +670,41 @@ bitflags::bitflags! {
     }
 }
 
-impl AccessFlags {
-    pub(crate) fn to_vk(self) -> vk::AccessFlags2 {
+impl From<AccessFlags> for vk::AccessFlags2 {
+    fn from(value: AccessFlags) -> Self {
         let mut flags = vk::AccessFlags2::empty();
 
-        if self.contains(Self::TRANSFER_READ) {
+        if value.contains(AccessFlags::TRANSFER_READ) {
             flags |= vk::AccessFlags2::TRANSFER_READ;
         }
-        if self.contains(Self::TRANSFER_WRITE) {
+        if value.contains(AccessFlags::TRANSFER_WRITE) {
             flags |= vk::AccessFlags2::TRANSFER_WRITE;
         }
-        if self.contains(Self::SHADER_READ) {
+        if value.contains(AccessFlags::SHADER_READ) {
             flags |= vk::AccessFlags2::SHADER_READ;
         }
-        if self.contains(Self::SHADER_WRITE) {
+        if value.contains(AccessFlags::SHADER_WRITE) {
             flags |= vk::AccessFlags2::SHADER_WRITE;
         }
-        if self.contains(Self::COLOR_READ) {
+        if value.contains(AccessFlags::COLOR_READ) {
             flags |= vk::AccessFlags2::COLOR_ATTACHMENT_READ;
         }
-        if self.contains(Self::COLOR_WRITE) {
+        if value.contains(AccessFlags::COLOR_WRITE) {
             flags |= vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
         }
-        if self.contains(Self::DEPTH_STENCIL_READ) {
+        if value.contains(AccessFlags::DEPTH_STENCIL_READ) {
             flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ;
         }
-        if self.contains(Self::DPETH_STENICL_WRITE) {
+        if value.contains(AccessFlags::DPETH_STENICL_WRITE) {
             flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE;
         }
-        if self.contains(Self::INDIRECT_READ) {
+        if value.contains(AccessFlags::INDIRECT_READ) {
             flags |= vk::AccessFlags2::INDEX_READ;
         }
-        if self.contains(Self::HOST_READ) {
+        if value.contains(AccessFlags::HOST_READ) {
             flags |= vk::AccessFlags2::HOST_READ;
         }
-        if self.contains(Self::DESCIRPTOR_READ) {
+        if value.contains(AccessFlags::DESCIRPTOR_READ) {
             flags |= vk::AccessFlags2::DESCRIPTOR_BUFFER_READ_EXT;
         }
 
@@ -716,11 +727,11 @@ pub struct Extent2D {
     pub height: u32,
 }
 
-impl Extent2D {
-    pub(crate) fn to_vk(self) -> vk::Extent2D {
+impl From<Extent2D> for vk::Extent2D {
+    fn from(value: Extent2D) -> Self {
         vk::Extent2D {
-            width: self.width,
-            height: self.height,
+            width: value.width,
+            height: value.height,
         }
     }
 }
@@ -732,12 +743,12 @@ pub struct Extent3D {
     pub depth: u32,
 }
 
-impl Extent3D {
-    pub(crate) fn to_vk(self) -> vk::Extent3D {
+impl From<Extent3D> for vk::Extent3D {
+    fn from(value: Extent3D) -> Self {
         vk::Extent3D {
-            width: self.width,
-            height: self.height,
-            depth: self.depth,
+            width: value.width,
+            height: value.height,
+            depth: value.depth,
         }
     }
 }
@@ -748,9 +759,9 @@ pub struct Offset2D {
     pub y: i32,
 }
 
-impl Offset2D {
-    pub(crate) fn to_vk(self) -> vk::Offset2D {
-        vk::Offset2D { x: self.x, y: self.y }
+impl From<Offset2D> for vk::Offset2D {
+    fn from(value: Offset2D) -> Self {
+        vk::Offset2D { x: value.x, y: value.y }
     }
 }
 
@@ -761,12 +772,12 @@ pub struct Offset3D {
     pub z: i32,
 }
 
-impl Offset3D {
-    pub(crate) fn to_vk(self) -> vk::Offset3D {
+impl From<Offset3D> for vk::Offset3D {
+    fn from(value: Offset3D) -> Self {
         vk::Offset3D {
-            x: self.x,
-            y: self.y,
-            z: self.z,
+            x: value.x,
+            y: value.y,
+            z: value.z,
         }
     }
 }
@@ -777,14 +788,16 @@ pub struct Rect2D {
     pub extent: Extent2D,
 }
 
-impl Rect2D {
-    pub(crate) fn to_vk(self) -> vk::Rect2D {
+impl From<Rect2D> for vk::Rect2D {
+    fn from(value: Rect2D) -> Self {
         vk::Rect2D {
-            offset: self.offset.to_vk(),
-            extent: self.extent.to_vk(),
+            offset: value.offset.into(),
+            extent: value.extent.into(),
         }
     }
+}
 
+impl Rect2D {
     pub fn offset(mut self, offset: Offset2D) -> Self {
         self.offset = offset;
         self
@@ -803,12 +816,12 @@ pub enum TextureAspect {
     Stencil,
 }
 
-impl TextureAspect {
-    pub(crate) fn to_vk(self) -> vk::ImageAspectFlags {
-        match self {
-            Self::Color => vk::ImageAspectFlags::COLOR,
-            Self::Depth => vk::ImageAspectFlags::DEPTH,
-            Self::Stencil => vk::ImageAspectFlags::STENCIL,
+impl From<TextureAspect> for vk::ImageAspectFlags {
+    fn from(value: TextureAspect) -> Self {
+        match value {
+            TextureAspect::Color => vk::ImageAspectFlags::COLOR,
+            TextureAspect::Depth => vk::ImageAspectFlags::DEPTH,
+            TextureAspect::Stencil => vk::ImageAspectFlags::STENCIL,
         }
     }
 }

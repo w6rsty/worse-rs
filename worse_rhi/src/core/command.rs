@@ -197,8 +197,8 @@ impl<'q> CmdFrame<'q, state::Active> {
                                     .device_mask(1)
                             })
                             .collect(),
-                        batch.waits.iter().map(|wait| wait.to_vk()).collect(),
-                        batch.signals.iter().map(|signal| signal.to_vk()).collect(),
+                        batch.waits.iter().map(|wait| (*wait).into()).collect(),
+                        batch.signals.iter().map(|signal| (*signal).into()).collect(),
                     )
                 })
                 .collect();
@@ -302,19 +302,19 @@ impl CmdEncoder<'_, state::Active> {
     pub fn bind_pipeline(&self, pipeline: &Pipeline) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
-        unsafe { device.cmd_bind_pipeline(buffer, pipeline.kind.to_vk_bind_point(), pipeline.handle) };
+        unsafe { device.cmd_bind_pipeline(buffer, pipeline.kind.into(), pipeline.handle) };
     }
 
     pub fn set_viewport(&self, viewport: Viewport) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
-        unsafe { device.cmd_set_viewport_with_count(buffer, &[viewport.to_vk()]) };
+        unsafe { device.cmd_set_viewport_with_count(buffer, &[viewport.into()]) };
     }
 
     pub fn set_scissor(&self, scissor: Scissor) {
         let device = &self.inner.queue.device.handle;
         let buffer = self.inner.buffer;
-        unsafe { device.cmd_set_scissor_with_count(buffer, &[scissor.to_vk()]) };
+        unsafe { device.cmd_set_scissor_with_count(buffer, &[scissor.into()]) };
     }
 
     pub fn set_stencil(&self, state: DepthStencilState) {
@@ -326,7 +326,7 @@ impl CmdEncoder<'_, state::Active> {
             device.cmd_set_depth_test_enable(buffer, depth.test);
             if state.depth.test {
                 device.cmd_set_depth_write_enable(buffer, depth.write);
-                device.cmd_set_depth_compare_op(buffer, depth.compare.to_vk());
+                device.cmd_set_depth_compare_op(buffer, depth.compare.into());
             }
 
             let stencil = &state.stencil;
@@ -335,18 +335,18 @@ impl CmdEncoder<'_, state::Active> {
                 device.cmd_set_stencil_op(
                     buffer,
                     vk::StencilFaceFlags::FRONT,
-                    stencil.front.fail.to_vk(),
-                    stencil.front.pass.to_vk(),
-                    stencil.front.depth_fail.to_vk(),
-                    stencil.front.compare.to_vk(),
+                    stencil.front.fail.into(),
+                    stencil.front.pass.into(),
+                    stencil.front.depth_fail.into(),
+                    stencil.front.compare.into(),
                 );
                 device.cmd_set_stencil_op(
                     buffer,
                     vk::StencilFaceFlags::BACK,
-                    stencil.back.fail.to_vk(),
-                    stencil.back.pass.to_vk(),
-                    stencil.back.depth_fail.to_vk(),
-                    stencil.back.compare.to_vk(),
+                    stencil.back.fail.into(),
+                    stencil.back.pass.into(),
+                    stencil.back.depth_fail.into(),
+                    stencil.back.compare.into(),
                 );
                 device.cmd_set_stencil_compare_mask(buffer, vk::StencilFaceFlags::FRONT_AND_BACK, stencil.compare_mask);
                 device.cmd_set_stencil_write_mask(buffer, vk::StencilFaceFlags::FRONT_AND_BACK, stencil.write_mask);
@@ -369,7 +369,7 @@ impl CmdEncoder<'_, state::Active> {
             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .subresource_range(
                 vk::ImageSubresourceRange::default()
-                    .aspect_mask(aspect.to_vk())
+                    .aspect_mask(aspect.into())
                     .base_mip_level(0)
                     .level_count(texture.mip_levels)
                     .base_array_layer(0)
@@ -390,10 +390,10 @@ impl CmdEncoder<'_, state::Active> {
         dst_access: AccessFlags,
     ) {
         let barrier_infos = [vk::MemoryBarrier2::default()
-            .src_stage_mask(src_stage.to_vk())
-            .src_access_mask(src_access.to_vk())
-            .dst_stage_mask(dst_stage.to_vk())
-            .dst_access_mask(dst_access.to_vk())];
+            .src_stage_mask(src_stage.into())
+            .src_access_mask(src_access.into())
+            .dst_stage_mask(dst_stage.into())
+            .dst_access_mask(dst_access.into())];
         let dependency_info = vk::DependencyInfo::default().memory_barriers(&barrier_infos);
 
         let device = &self.inner.queue.device.handle;
@@ -445,15 +445,15 @@ impl CmdEncoder<'_, state::Active> {
                 vk::RenderingAttachmentInfo::default()
                     .image_view(color.view.handle)
                     .image_layout(vk::ImageLayout::GENERAL)
-                    .load_op(color.load.to_vk())
-                    .store_op(color.store.to_vk())
-                    .clear_value(color.clear.to_vk())
+                    .load_op(color.load.into())
+                    .store_op(color.store.into())
+                    .clear_value(color.clear.into())
             })
             .collect();
 
         let mut rendering_info = vk::RenderingInfo::default()
             .flags(flags)
-            .render_area(desc.area.to_vk())
+            .render_area(desc.area.into())
             .layer_count(1)
             .view_mask(0)
             .color_attachments(&color_targets);
@@ -463,8 +463,8 @@ impl CmdEncoder<'_, state::Active> {
             depth_target = depth_target
                 .image_view(depth.view.handle)
                 .image_layout(vk::ImageLayout::GENERAL)
-                .load_op(depth.load.to_vk())
-                .store_op(depth.store.to_vk())
+                .load_op(depth.load.into())
+                .store_op(depth.store.into())
                 .clear_value({
                     let mut clear_value = vk::ClearValue::default();
                     clear_value.depth_stencil = unsafe { clear_value.depth_stencil.depth(depth.clear) };
@@ -478,8 +478,8 @@ impl CmdEncoder<'_, state::Active> {
             stencil_target = stencil_target
                 .image_view(stencil.view.handle)
                 .image_layout(vk::ImageLayout::GENERAL)
-                .load_op(stencil.load.to_vk())
-                .store_op(stencil.store.to_vk())
+                .load_op(stencil.load.into())
+                .store_op(stencil.store.into())
                 .clear_value({
                     let mut clear_value = vk::ClearValue::default();
                     clear_value.depth_stencil = unsafe { clear_value.depth_stencil.stencil(stencil.clear) };

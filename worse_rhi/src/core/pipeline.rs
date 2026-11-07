@@ -48,11 +48,11 @@ pub enum PipelineKind {
     Compute,
 }
 
-impl PipelineKind {
-    pub fn to_vk_bind_point(self) -> vk::PipelineBindPoint {
-        match self {
-            Self::Raster => vk::PipelineBindPoint::GRAPHICS,
-            Self::Compute => vk::PipelineBindPoint::COMPUTE,
+impl From<PipelineKind> for vk::PipelineBindPoint {
+    fn from(value: PipelineKind) -> Self {
+        match value {
+            PipelineKind::Raster => vk::PipelineBindPoint::GRAPHICS,
+            PipelineKind::Compute => vk::PipelineBindPoint::COMPUTE,
         }
     }
 }
@@ -323,9 +323,9 @@ impl Device {
             vk::PipelineInputAssemblyStateCreateInfo::default().topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         let viewport = vk::PipelineViewportStateCreateInfo::default();
         let rasterization = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(desc.rasterizer.polygon_mode.to_vk())
-            .cull_mode(desc.rasterizer.cull_mode.to_vk())
-            .front_face(desc.rasterizer.front_face.to_vk())
+            .polygon_mode(desc.rasterizer.polygon_mode.into())
+            .cull_mode(desc.rasterizer.cull_mode.into())
+            .front_face(desc.rasterizer.front_face.into())
             .depth_bias_enable(
                 desc.rasterizer.depth_bias_constant != 0.0
                     || desc.rasterizer.depth_bias_constant != 0.0
@@ -347,14 +347,14 @@ impl Device {
                         .color_write_mask(vk::ColorComponentFlags::from_raw(color_target.write_mask.bits()));
                     if let Some(blend_state) = color_target.blend_state {
                         color_blend_state = color_blend_state
-                            .src_color_blend_factor(blend_state.color.source.to_vk())
-                            .dst_color_blend_factor(blend_state.color.destination.to_vk())
-                            .color_blend_op(blend_state.color.operation.to_vk())
-                            .src_alpha_blend_factor(blend_state.alpha.source.to_vk())
-                            .dst_alpha_blend_factor(blend_state.alpha.destination.to_vk())
-                            .alpha_blend_op(blend_state.alpha.operation.to_vk());
+                            .src_color_blend_factor(blend_state.color.source.into())
+                            .dst_color_blend_factor(blend_state.color.destination.into())
+                            .color_blend_op(blend_state.color.operation.into())
+                            .src_alpha_blend_factor(blend_state.alpha.source.into())
+                            .dst_alpha_blend_factor(blend_state.alpha.destination.into())
+                            .alpha_blend_op(blend_state.alpha.operation.into());
                     }
-                    (color_blend_state, color_target.format.to_vk())
+                    (color_blend_state, color_target.format.into())
                 })
                 .unzip();
         let color_blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&color_blend_states);
@@ -374,8 +374,8 @@ impl Device {
 
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&color_formats)
-            .depth_attachment_format(desc.depth_format.to_vk())
-            .stencil_attachment_format(desc.stencil_format.to_vk());
+            .depth_attachment_format(desc.depth_format.into())
+            .stencil_attachment_format(desc.stencil_format.into());
         let mut pipeline_flags =
             vk::PipelineCreateFlags2CreateInfo::default().flags(vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT);
 
@@ -432,11 +432,11 @@ pub struct ClearColor {
     pub w: f32,
 }
 
-impl ClearColor {
-    pub(crate) fn to_vk(self) -> vk::ClearValue {
+impl From<ClearColor> for vk::ClearValue {
+    fn from(value: ClearColor) -> Self {
         let mut clear_value = vk::ClearValue::default();
         clear_value.color = vk::ClearColorValue {
-            float32: [self.x, self.y, self.z, self.w],
+            float32: [value.x, value.y, value.z, value.w],
         };
         clear_value
     }
@@ -510,15 +510,15 @@ pub struct Viewport {
     pub max_depth: f32,
 }
 
-impl Viewport {
-    pub(crate) fn to_vk(self) -> vk::Viewport {
+impl From<Viewport> for vk::Viewport {
+    fn from(value: Viewport) -> Self {
         vk::Viewport {
-            x: self.x,
-            y: self.y,
-            width: self.width,
-            height: self.height,
-            min_depth: self.min_depth,
-            max_depth: self.max_depth,
+            x: value.x,
+            y: value.y,
+            width: value.width,
+            height: value.height,
+            min_depth: value.min_depth,
+            max_depth: value.max_depth,
         }
     }
 }

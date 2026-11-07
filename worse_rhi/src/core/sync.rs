@@ -21,6 +21,15 @@ pub enum WaitResult {
     Timeout,
 }
 
+impl<'a> From<SyncPoint> for vk::SemaphoreSubmitInfo<'a> {
+    fn from(value: SyncPoint) -> Self {
+        vk::SemaphoreSubmitInfo::default()
+            .semaphore(value.semaphore)
+            .value(value.value)
+            .stage_mask(value.stage)
+    }
+}
+
 impl SyncPoint {
     pub(crate) fn binary(semaphore: vk::Semaphore, stage: vk::PipelineStageFlags2) -> Self {
         Self {
@@ -28,13 +37,6 @@ impl SyncPoint {
             value: 0,
             stage,
         }
-    }
-
-    pub(crate) fn to_vk<'a>(self) -> vk::SemaphoreSubmitInfo<'a> {
-        vk::SemaphoreSubmitInfo::default()
-            .semaphore(self.semaphore)
-            .value(self.value)
-            .stage_mask(self.stage)
     }
 }
 
@@ -98,7 +100,7 @@ impl Timeline {
         SyncPoint {
             semaphore: self.semaphore,
             value,
-            stage: stage.to_vk(),
+            stage: stage.into(),
         }
     }
 

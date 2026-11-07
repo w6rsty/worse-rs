@@ -62,9 +62,9 @@ pub enum PresentMode {
     FifoRelaxed,
 }
 
-impl PresentMode {
-    pub fn to_vk(self) -> vk::PresentModeKHR {
-        match self {
+impl From<PresentMode> for vk::PresentModeKHR {
+    fn from(value: PresentMode) -> Self {
+        match value {
             PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
             PresentMode::Mailbox => vk::PresentModeKHR::MAILBOX,
             PresentMode::Fifo => vk::PresentModeKHR::FIFO,
@@ -79,11 +79,11 @@ pub enum SwapchainAlphaComposite {
     Transparent,
 }
 
-impl SwapchainAlphaComposite {
-    pub fn to_vk(self) -> vk::CompositeAlphaFlagsKHR {
-        match self {
-            Self::Opaque => vk::CompositeAlphaFlagsKHR::OPAQUE,
-            Self::Transparent => vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
+impl From<SwapchainAlphaComposite> for vk::CompositeAlphaFlagsKHR {
+    fn from(value: SwapchainAlphaComposite) -> Self {
+        match value {
+            SwapchainAlphaComposite::Opaque => vk::CompositeAlphaFlagsKHR::OPAQUE,
+            SwapchainAlphaComposite::Transparent => vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
         }
     }
 }
@@ -498,7 +498,7 @@ impl Swapchain {
             .ok_or(SwapchainCreateError::InstanceSurfaceSupportNotAvailable)?;
         let options = &self.options;
 
-        let mut surface_present_mode = vk::SurfacePresentModeKHR::default().present_mode(options.present_mode.to_vk());
+        let mut surface_present_mode = vk::SurfacePresentModeKHR::default().present_mode(options.present_mode.into());
         let surface_info = vk::PhysicalDeviceSurfaceInfo2KHR::default()
             .push(&mut surface_present_mode)
             .surface(surface.handle);
@@ -534,8 +534,8 @@ impl Swapchain {
         }
 
         let desired = vk::SurfaceFormatKHR {
-            format: options.format.to_vk(),
-            color_space: options.color_space.to_vk(),
+            format: options.format.into(),
+            color_space: options.color_space.into(),
         };
         // Note: this query allocates a Vec; it only runs on (re)creation.
         let supported = unsafe {
@@ -553,7 +553,7 @@ impl Swapchain {
         }
         image_count = image_count.min(MAX_SWAPCHAIN_IMAGES as u32);
 
-        let composite_alpha = options.alpha_composite.to_vk();
+        let composite_alpha = options.alpha_composite.into();
         if !capabilities.supported_composite_alpha.contains(composite_alpha) {
             return Err(SwapchainCreateError::UnsupportedAlphaComposite(options.alpha_composite));
         }
@@ -584,23 +584,23 @@ impl Swapchain {
             .as_ref()
             .ok_or(SwapchainCreateError::DeviceSwapchainSupportNotAvailable)?;
         let options = &self.options;
-        let format = options.format.to_vk();
+        let format = options.format.into();
 
-        let present_modes = [options.present_mode.to_vk()];
+        let present_modes = [options.present_mode.into()];
         let mut present_modes_info = vk::SwapchainPresentModesCreateInfoKHR::default().present_modes(&present_modes);
         let swapchain_info = vk::SwapchainCreateInfoKHR::default()
             .push(&mut present_modes_info)
             .surface(surface.handle)
             .min_image_count(params.image_count)
             .image_format(format)
-            .image_color_space(options.color_space.to_vk())
+            .image_color_space(options.color_space.into())
             .image_extent(params.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(params.transform)
             .composite_alpha(params.composite_alpha)
-            .present_mode(options.present_mode.to_vk())
+            .present_mode(options.present_mode.into())
             .clipped(true)
             .old_swapchain(old_handle.unwrap_or(vk::SwapchainKHR::null()));
 

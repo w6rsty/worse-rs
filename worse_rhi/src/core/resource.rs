@@ -24,22 +24,22 @@ pub(crate) struct MemoryProperties {
     pub(crate) avoided: vk::MemoryPropertyFlags,
 }
 
-impl MemoryDomain {
-    pub(crate) fn to_vk_memory_property(self) -> MemoryProperties {
-        match self {
-            Self::DeviceLocal => MemoryProperties {
+impl From<MemoryDomain> for MemoryProperties {
+    fn from(value: MemoryDomain) -> Self {
+        match value {
+            MemoryDomain::DeviceLocal => MemoryProperties {
                 required: vk::MemoryPropertyFlags::DEVICE_LOCAL,
                 preferred: vk::MemoryPropertyFlags::empty(),
                 avoided: vk::MemoryPropertyFlags::HOST_VISIBLE,
             },
-            Self::HostVisible => MemoryProperties {
+            MemoryDomain::HostVisible => MemoryProperties {
                 required: vk::MemoryPropertyFlags::DEVICE_LOCAL
                     | vk::MemoryPropertyFlags::HOST_VISIBLE
                     | vk::MemoryPropertyFlags::HOST_COHERENT,
                 preferred: vk::MemoryPropertyFlags::empty(),
                 avoided: vk::MemoryPropertyFlags::empty(),
             },
-            Self::Staging => MemoryProperties {
+            MemoryDomain::Staging => MemoryProperties {
                 required: vk::MemoryPropertyFlags::HOST_VISIBLE
                     | vk::MemoryPropertyFlags::HOST_CACHED
                     | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -131,7 +131,7 @@ impl Device {
     ) -> Result<MemoryBlock, MemoryBlockError> {
         let device = &self.shared;
 
-        let requirements = domain.to_vk_memory_property();
+        let requirements = domain.into();
         let memory_type_index = self.find_memory_type(size as u64, memory_type_bits, requirements)?;
 
         let mut allocate_flags = vk::MemoryAllocateFlagsInfo::default().flags(vk::MemoryAllocateFlags::DEVICE_ADDRESS);
@@ -211,7 +211,7 @@ impl Device {
 
         vk::BufferCreateInfo::default()
             .size(desc.size as vk::DeviceAddress)
-            .usage(desc.usage.to_vk())
+            .usage(desc.usage.into())
             .sharing_mode(sharing_mode)
             .queue_family_indices(&indices)
     }
@@ -586,8 +586,8 @@ impl Device {
         }
 
         vk::ImageCreateInfo::default()
-            .image_type(desc.dimension.to_vk_image_type())
-            .format(desc.format.to_vk())
+            .image_type(desc.dimension.into())
+            .format(desc.format.into())
             .extent(vk::Extent3D {
                 width: desc.extent.width,
                 height: desc.extent.height,
@@ -595,8 +595,8 @@ impl Device {
             })
             .mip_levels(desc.mip_levels)
             .array_layers(desc.array_layers)
-            .samples(desc.samples.to_vk())
-            .usage(desc.usage.to_vk())
+            .samples(desc.samples.into())
+            .usage(desc.usage.into())
             .sharing_mode(sharing_mode)
             .queue_family_indices(&indices)
             .flags(texture_flag)
@@ -742,11 +742,11 @@ impl TextureViewDesc {
 fn convert_texture_view_desc<'desc>(desc: &'desc TextureViewDesc) -> vk::ImageViewCreateInfo<'desc> {
     vk::ImageViewCreateInfo::default()
         .image(desc.texture)
-        .view_type(desc.dimension.to_vk_image_view_type())
-        .format(desc.format.to_vk())
+        .view_type(desc.dimension.into())
+        .format(desc.format.into())
         .subresource_range(
             vk::ImageSubresourceRange::default()
-                .aspect_mask(desc.aspect.to_vk())
+                .aspect_mask(desc.aspect.into())
                 .base_mip_level(desc.mip_range.start)
                 .level_count(desc.mip_range.end - desc.mip_range.start)
                 .base_array_layer(desc.layer_range.start)
@@ -814,22 +814,22 @@ impl Default for SamplerDesc {
     }
 }
 
-impl SamplerDesc {
-    pub(crate) fn to_vk(self) -> vk::SamplerCreateInfo<'static> {
+impl From<SamplerDesc> for vk::SamplerCreateInfo<'static> {
+    fn from(value: SamplerDesc) -> Self {
         let mut info = vk::SamplerCreateInfo::default()
-            .min_filter(self.min_filter.to_vk())
-            .mag_filter(self.mag_filter.to_vk())
-            .mipmap_mode(self.mipmap_mode.to_vk_mipmap_mode())
-            .address_mode_u(self.address_u.to_vk())
-            .address_mode_v(self.address_v.to_vk())
-            .address_mode_w(self.address_w.to_vk());
-        info = if let Some(anisotropic) = self.anisotropic {
+            .min_filter(value.min_filter.into())
+            .mag_filter(value.mag_filter.into())
+            .mipmap_mode(value.mipmap_mode.into())
+            .address_mode_u(value.address_u.into())
+            .address_mode_v(value.address_v.into())
+            .address_mode_w(value.address_w.into());
+        info = if let Some(anisotropic) = value.anisotropic {
             info.anisotropy_enable(true).max_anisotropy(anisotropic)
         } else {
             info.anisotropy_enable(false)
         };
-        info = if let Some(compare) = self.compare {
-            info.compare_enable(true).compare_op(compare.to_vk())
+        info = if let Some(compare) = value.compare {
+            info.compare_enable(true).compare_op(compare.into())
         } else {
             info.compare_enable(false)
         };
@@ -957,7 +957,7 @@ impl DescriptorHeap {
             return Err(DescriptorHeapError::IndexOutOfBound(self.capacity, index));
         }
 
-        let mut view_usage = vk::ImageViewUsageCreateInfo::default().usage(kind.to_vk_usage());
+        let mut view_usage = vk::ImageViewUsageCreateInfo::default().usage(kind.into());
         let mut view_info = convert_texture_view_desc(&desc);
         view_info = view_info.push(&mut view_usage);
         let descriptor_info = [vk::ImageDescriptorInfoEXT::default()
@@ -967,7 +967,7 @@ impl DescriptorHeap {
         let mut resourece_descriptor_info = vk::ResourceDescriptorDataEXT::default();
         resourece_descriptor_info.p_image = descriptor_info.as_ptr();
         let resources = [vk::ResourceDescriptorInfoEXT::default()
-            .ty(kind.to_vk_descriptor_type())
+            .ty(kind.into())
             .data(resourece_descriptor_info)];
 
         let descriptor_range = unsafe {
@@ -989,7 +989,7 @@ impl DescriptorHeap {
             return Err(DescriptorHeapError::IndexOutOfBound(self.capacity, index));
         }
 
-        let samplers = [desc.to_vk()];
+        let samplers = [(*desc).into()];
 
         let descriptor_range = unsafe {
             let offset = self.payload.start as usize + index * self.descriptor_size;
