@@ -6,3 +6,5 @@
 *.ini
 *.spv
 *.spv-asm
+
+.cargo/config.toml

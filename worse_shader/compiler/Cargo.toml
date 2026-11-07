@@ -1,0 +1,11 @@
+[package]
+name = "worse_shader_compiler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+slang-rs = { workspace = true }
+bitflags = { workspace = true }
+thiserror = { workspace = true }
+arrayvec = { workspace = true }
+tracing = { workspace = true }

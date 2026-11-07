@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "worse_core", "worse_rhi"]
+members = [".", "worse_core", "worse_rhi", "worse_shader/preprocess"]
 resolver = "3"
 
 [package]
@@ -17,9 +17,12 @@ arrayvec = "0.7.8"
 mint = "0.5.9"
 glam = "0.34.0"
 ash = { git = "https://github.com/ash-rs/ash", rev = "a9a1fb17e98a0cde146caada86200d809306200d" }
+slang-rs = { package = "shader-slang", git = "https://github.com/w6rsty/slang-rs", rev = "aab663d16d191df4f8a601d05cafce841e792437" }
 
 worse_core = { path = "worse_core" }
 worse_rhi = { path = "worse_rhi", default-features = false }
+worse_shader_preprocess = { path = "worse_shader/preprocess" }
+worse_shader_compiler = { path = "worse_shader/compiler" }
 
 [dev-dependencies]
 bytemuck = { workspace = true }
@@ -27,6 +30,8 @@ bitflags = { workspace = true }
 glam = { workspace = true }
 mint = { workspace = true }
 rand = "0.9"
+arrayvec = { workspace = true }
 worse_core = { workspace = true }
 worse_rhi = { workspace = true, features = ["vulkan"] }
-arrayvec = { workspace = true }
+worse_shader_preprocess = { workspace = true }
+worse_shader_compiler = { workspace = true }

@@ -1,12 +1,18 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Quat, Vec3};
 use rand::Rng;
-use std::{cell::RefCell, fs, io, path::Path, sync::Arc, time};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time,
+};
 use worse_core::{
     log::{self, LogConfig, error, info},
     window::{Event, Window, WindowDesc},
 };
 use worse_rhi::core::{self as rhi, BufferSlice, TargetView};
+use worse_shader_compiler as compile;
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
@@ -31,10 +37,12 @@ fn main() {
         .unwrap();
     let texture_allocator = TextureAllocator::new(256 * 1024 * 1024, &device);
 
+    let compile_service = compile::CompileService::new().unwrap();
+    let simulation_pipeline = make_simulation_pipeline(&device, &compile_service);
+    let gbuffer_pipeline = make_gbuffer_pipeline(&device, &compile_service);
+    let shading_pipeline = make_shading_pipeline(&device, &compile_service);
+
     let simulation_buffer = make_simulation_buffer(&device);
-    let simulation_pipeline = make_simulation_pipeline(&device);
-    let gbuffer_pipeline = make_gbuffer_pipeline(&device);
-    let shading_pipeline = make_shading_pipeline(&device);
 
     let mut gbuffer: Option<GBuffer> = None;
 
@@ -168,20 +176,6 @@ fn main() {
     swapchain.destroy();
 }
 
-fn load_spirv(path: impl AsRef<Path>) -> io::Result<Vec<u32>> {
-    let bytes = fs::read(path)?;
-    if bytes.len() % 4 != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "SPIR-V size is not aligned to 4 bytes",
-        ));
-    }
-    Ok(bytes
-        .chunks_exact(4)
-        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-        .collect())
-}
-
 fn make_context(window: Arc<Window>) -> (rhi::Instance, rhi::Device) {
     let instance = rhi::Instance::new(
         rhi::InstanceCreateOptions::default()
@@ -194,16 +188,31 @@ fn make_context(window: Arc<Window>) -> (rhi::Instance, rhi::Device) {
     (instance, device)
 }
 
-fn make_simulation_pipeline(device: &rhi::Device) -> rhi::Pipeline {
-    let cs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/simulation_cs.spv")).unwrap();
+fn make_simulation_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
+    let cs = compile_program(
+        compile_service,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/simulation.slang"),
+        "compute_main",
+        compile::Stage::Compute,
+    );
     device
         .create_compute_pipeline(rhi::ShaderStage::new(&cs, "compute_main"))
         .unwrap()
 }
 
-fn make_gbuffer_pipeline(device: &rhi::Device) -> rhi::Pipeline {
-    let ms = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer_ms.spv")).unwrap();
-    let fs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer_fs.spv")).unwrap();
+fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
+    let ms = compile_program(
+        compile_service,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
+        "mesh_main",
+        compile::Stage::Mesh,
+    );
+    let fs = compile_program(
+        compile_service,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
+        "fragment_main",
+        compile::Stage::Fragment,
+    );
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
             primitive: rhi::PrimitiveStages::Mesh {
@@ -226,9 +235,19 @@ fn make_gbuffer_pipeline(device: &rhi::Device) -> rhi::Pipeline {
         .expect("failed to create pipeline")
 }
 
-fn make_shading_pipeline(device: &rhi::Device) -> rhi::Pipeline {
-    let vs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading_vs.spv")).unwrap();
-    let fs = load_spirv(Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading_fs.spv")).unwrap();
+fn make_shading_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
+    let vs = compile_program(
+        compile_service,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
+        "vertex_main",
+        compile::Stage::Vertex,
+    );
+    let fs = compile_program(
+        compile_service,
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
+        "fragment_main",
+        compile::Stage::Fragment,
+    );
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
             primitive: rhi::PrimitiveStages::Vertex {
@@ -741,4 +760,26 @@ impl GBuffer {
         device.destory_texture(self.normal_roughness);
         device.destory_texture(self.depth);
     }
+}
+
+fn compile_program(
+    service: &compile::CompileService,
+    path: PathBuf,
+    entry_point: &str,
+    stage: compile::Stage,
+) -> Vec<u32> {
+    let desc = compile::CompileDesc {
+        source: compile::FileSource::File(path),
+        entry: compile::EntryPoint {
+            name: entry_point.to_string(),
+            stage,
+        },
+        matrix_layout: compile::MatrixLayout::ColumnMajor,
+        optimization: compile::OptimizationLevel::Default,
+        debug_info: None,
+        specialization: None,
+    };
+
+    let codes = service.compile(desc).unwrap();
+    codes[0].to_spirv_byte_code().unwrap()
 }
