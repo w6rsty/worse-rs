@@ -1,5 +1,11 @@
 [workspace]
-members = [".", "worse_core", "worse_rhi", "worse_shader/compiler"]
+members = [
+    ".",
+    "worse_core",
+    "worse_rhi",
+    "worse_shader/compiler",
+    "worse_render",
+]
 resolver = "3"
 
 [package]
@@ -17,8 +23,9 @@ arrayvec = "0.7.8"
 mint = "0.5.9"
 glam = "0.34.0"
 ash = { git = "https://github.com/ash-rs/ash", rev = "a9a1fb17e98a0cde146caada86200d809306200d" }
-slang-auto = { git = "https://github.com/w6rsty/slang-auto", rev = "460899fef4a05703bc5e3c991e14f6e6961939c9" }
+slang-auto = { git = "https://github.com/w6rsty/slang-auto", rev = "e69f8ec3be215129d6524fe7f14c1a7deb29d3a5" }
 
+worse_render = { path = "worse_render" }
 worse_core = { path = "worse_core" }
 worse_rhi = { path = "worse_rhi", default-features = false }
 worse_shader_compiler = { path = "worse_shader/compiler" }

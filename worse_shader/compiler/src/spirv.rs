@@ -5,20 +5,32 @@ use slang_auto as slang;
 const SPIRV_MAGIC: u32 = 0x0723_0203;
 const SPIRV_MAGIC_INVERSED: u32 = 0x0302_2307;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Spirv {
-    pub(crate) code: slang::Blob,
+    pub(crate) code: Option<slang::Blob>,
     pub(crate) asm: Option<slang::Blob>,
     pub(crate) dbg: Option<slang::Blob>,
 }
 
 impl Spirv {
+    pub fn code_bytes(&self) -> Option<&[u8]> {
+        self.code.as_ref().map(slang::Blob::as_bytes)
+    }
+
+    pub fn asm_bytes(&self) -> Option<&[u8]> {
+        self.asm.as_ref().map(slang::Blob::as_bytes)
+    }
+
+    pub fn debug_data(&self) -> Option<&[u8]> {
+        self.dbg.as_ref().map(slang::Blob::as_bytes)
+    }
+
     pub fn bytes(&self) -> &[u8] {
-        self.code.as_bytes()
+        self.code_bytes().unwrap_or_default()
     }
 
     pub fn words(&self) -> Result<Cow<'_, [u32]>, SpirvError> {
-        spirv_words(self.code.as_bytes())
+        spirv_words(self.code_bytes().ok_or(SpirvError::NoCode)?)
     }
 
     pub fn debug_bytes(&self) -> Result<&[u8], SpirvError> {
@@ -33,30 +45,27 @@ impl Spirv {
     }
 
     pub fn asm_str(&self) -> Option<Cow<'_, str>> {
-        self.asm.as_ref().map(|b| String::from_utf8_lossy(b.as_bytes()))
+        self.asm.as_ref().map(slang::Blob::to_string_lossy)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SpirvError {
+    NoCode,
     InvalidLength,
     InvalidMagicNumber(u32),
     NoDebugInfo,
 }
 
 fn spirv_words(bytes: &[u8]) -> Result<Cow<'_, [u32]>, SpirvError> {
-    if bytes.len() < 4 || bytes.len() % 4 != 0 {
+    if bytes.len() < 4 || bytes.len() & 3 != 0 {
         return Err(SpirvError::InvalidLength);
     }
 
-    if let Ok(words) = bytemuck::try_cast_slice::<u8, u32>(bytes) {
-        if words[0] == SPIRV_MAGIC {
-            return Ok(Cow::Borrowed(words));
-        }
+    match bytemuck::try_cast_slice::<u8, u32>(bytes) {
+        Ok(words) if words[0] == SPIRV_MAGIC => Ok(Cow::Borrowed(words)),
+        _ => copy_spirv_words(bytes).map(Cow::Owned),
     }
-
-    // fallback
-    copy_spirv_words(bytes).map(Cow::Owned)
 }
 
 fn copy_spirv_words(bytes: &[u8]) -> Result<Vec<u32>, SpirvError> {

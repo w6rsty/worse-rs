@@ -1,93 +1,21 @@
-use std::{path::PathBuf, sync::Arc};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-use slang_auto::sys;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OptimizationLevel {
-    #[doc = "< Don't optimize at all."]
-    None = 0,
-    #[doc = "< Default optimization level: balance code quality and compilation time."]
-    Default = 1,
-    #[doc = "< Optimize aggressively."]
-    High = 2,
-    #[doc = "< Include optimizations that may take a very long time, or may involve severe space-vs-speed tradeoffs"]
-    Maximal = 3,
-}
-
-impl From<OptimizationLevel> for sys::SlangOptimizationLevel {
-    fn from(value: OptimizationLevel) -> Self {
-        match value {
-            OptimizationLevel::None => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_NONE,
-            OptimizationLevel::Default => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_DEFAULT,
-            OptimizationLevel::High => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_HIGH,
-            OptimizationLevel::Maximal => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_MAXIMAL,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DebugInfoLevel {
-    #[doc = "< Don't emit debug information at all."]
-    None = 0,
-    #[doc = "< Emit as little debug information as possible, while still supporting stack trackers."]
-    Minimal = 1,
-    #[doc = "< Emit whatever is the standard level of debug information for each target."]
-    Standard = 2,
-    #[doc = "< Emit as much debug information as possible for each target."]
-    Maximal = 3,
-}
-
-impl From<DebugInfoLevel> for sys::SlangDebugInfoLevel {
-    fn from(value: DebugInfoLevel) -> Self {
-        match value {
-            DebugInfoLevel::None => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_NONE,
-            DebugInfoLevel::Minimal => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_MINIMAL,
-            DebugInfoLevel::Standard => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_STANDARD,
-            DebugInfoLevel::Maximal => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_MAXIMAL,
-        }
-    }
-}
+pub use crate::source::ModuleUnitToken;
+pub use slang_auto::{DebugInfoLevel, MatrixLayout, OptimizationLevel, Stage};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct DebugFlags: u8 {
-        const EMIT_ASM = 1 << 0; // Add spirv-asm target
-        const SEPARATE = 1 << 1; // -separate-debug-info
+        const SEPARATE = 1 << 1;
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Stage {
-    Vertex,
-    Fragment,
-    Compute,
-
-    Mesh,
-    Task,
-
-    RayGeneration,
-    Intersection,
-    AnyHit,
-    ClosestHit,
-    Miss,
-    Callable,
-}
-
-impl From<Stage> for sys::SlangStage {
-    fn from(value: Stage) -> Self {
-        match value {
-            Stage::Vertex => sys::SlangStage_SLANG_STAGE_VERTEX,
-            Stage::Fragment => sys::SlangStage_SLANG_STAGE_FRAGMENT,
-            Stage::Compute => sys::SlangStage_SLANG_STAGE_COMPUTE,
-            Stage::Mesh => sys::SlangStage_SLANG_STAGE_MESH,
-            Stage::Task => sys::SlangStage_SLANG_STAGE_AMPLIFICATION,
-            Stage::RayGeneration => sys::SlangStage_SLANG_STAGE_RAY_GENERATION,
-            Stage::Intersection => sys::SlangStage_SLANG_STAGE_INTERSECTION,
-            Stage::AnyHit => sys::SlangStage_SLANG_STAGE_ANY_HIT,
-            Stage::ClosestHit => sys::SlangStage_SLANG_STAGE_CLOSEST_HIT,
-            Stage::Miss => sys::SlangStage_SLANG_STAGE_MISS,
-            Stage::Callable => sys::SlangStage_SLANG_STAGE_CALLABLE,
-        }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct ArtifactMask: u8 {
+        const CODE = 1 << 0;
+        const ASM = 1 << 1;
+        const DEBUG = 1 << 2;
+        const ALL = Self::CODE.bits() | Self::ASM.bits() | Self::DEBUG.bits();
     }
 }
 
@@ -97,35 +25,85 @@ pub struct DebugInfo {
     pub flags: DebugFlags,
 }
 
+/// Configuration shared by every job in one native Slang session.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct EntryPoint {
-    pub name: String,
+pub struct BatchConfig {
+    pub matrix_layout: MatrixLayout,
+    pub optimization: OptimizationLevel,
+    pub debug_info: Option<DebugInfo>,
+    pub search_paths: Vec<PathBuf>,
+    pub defines: Vec<(String, String)>,
+    pub profile: String,
+}
+
+impl Default for BatchConfig {
+    fn default() -> Self {
+        Self {
+            matrix_layout: MatrixLayout::ColumnMajor,
+            optimization: OptimizationLevel::Default,
+            debug_info: None,
+            search_paths: Vec::new(),
+            defines: Vec::new(),
+            profile: "spirv_1_5".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EntryPointRef<'a> {
+    pub name: &'a str,
     pub stage: Stage,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MatrixLayout {
-    RowMajor,
-    ColumnMajor,
+impl<'a> EntryPointRef<'a> {
+    pub const fn new(name: &'a str, stage: Stage) -> Self {
+        Self { name, stage }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum FileSource {
-    File(PathBuf),
-    Memory {
-        virtual_name: String,
-        virutal_path: String,
-        payload: Arc<String>,
-    },
+/// A cheap job descriptor. Specialization is a module explicitly composed into
+/// this job (for link-time definitions); it is not a generic type argument.
+#[derive(Debug, Clone, Copy)]
+pub struct CompileDesc<'a> {
+    pub source: ModuleUnitToken,
+    pub specialization: Option<ModuleUnitToken>,
+    pub entry: EntryPointRef<'a>,
+    pub artifacts: ArtifactMask,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CompileDesc {
-    pub source: FileSource,
-    pub entry: EntryPoint,
-    pub matrix_layout: MatrixLayout,
-    pub optimization: OptimizationLevel,
-    /// `None` disables debug information; use `DebugFlags::SEPARATE` for a sidecar.
-    pub debug_info: Option<DebugInfo>,
-    pub specialization: Option<FileSource>,
+impl<'a> CompileDesc<'a> {
+    pub fn new(source: ModuleUnitToken, entry: EntryPointRef<'a>) -> Self {
+        Self {
+            source,
+            specialization: None,
+            entry,
+            artifacts: ArtifactMask::CODE,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    pub enabled: bool,
+    pub directory: Option<PathBuf>,
+    pub max_memory_bytes: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            directory: None,
+            max_memory_bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub struct BatchStats {
+    pub sessions: usize,
+    pub source_loads: usize,
+    pub file_reads: usize,
+    pub cache_hits: usize,
+    pub cache_writes: usize,
 }

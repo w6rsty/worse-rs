@@ -37,10 +37,10 @@ fn main() {
         .unwrap();
     let texture_allocator = TextureAllocator::new(256 * 1024 * 1024, &device);
 
-    let compile_service = compile::CompileService::new().unwrap();
-    let simulation_pipeline = make_simulation_pipeline(&device, &compile_service);
-    let gbuffer_pipeline = make_gbuffer_pipeline(&device, &compile_service);
-    let shading_pipeline = make_shading_pipeline(&device, &compile_service);
+    let mut compile_service = compile::CompileService::new().unwrap();
+    let simulation_pipeline = make_simulation_pipeline(&device, &mut compile_service);
+    let gbuffer_pipeline = make_gbuffer_pipeline(&device, &mut compile_service);
+    let shading_pipeline = make_shading_pipeline(&device, &mut compile_service);
 
     let simulation_buffer = make_simulation_buffer(&device);
 
@@ -188,7 +188,7 @@ fn make_context(window: Arc<Window>) -> (rhi::Instance, rhi::Device) {
     (instance, device)
 }
 
-fn make_simulation_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
+fn make_simulation_pipeline(device: &rhi::Device, compile_service: &mut compile::CompileService) -> rhi::Pipeline {
     let cs_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/simulation.slang"),
@@ -200,18 +200,14 @@ fn make_simulation_pipeline(device: &rhi::Device, compile_service: &compile::Com
         .unwrap()
 }
 
-fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
-    let ms_spirv = compile_program(
+fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &mut compile::CompileService) -> rhi::Pipeline {
+    let [ms_spirv, fs_spirv] = compile_programs(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
-        "mesh_main",
-        compile::Stage::Mesh,
-    );
-    let fs_spirv = compile_program(
-        compile_service,
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
-        "fragment_main",
-        compile::Stage::Fragment,
+        [
+            compile::EntryPointRef::new("mesh_main", compile::Stage::Mesh),
+            compile::EntryPointRef::new("fragment_main", compile::Stage::Fragment),
+        ],
     );
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
@@ -235,18 +231,14 @@ fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::Compil
         .expect("failed to create pipeline")
 }
 
-fn make_shading_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
-    let vs_spirv = compile_program(
+fn make_shading_pipeline(device: &rhi::Device, compile_service: &mut compile::CompileService) -> rhi::Pipeline {
+    let [vs_spirv, fs_spirv] = compile_programs(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
-        "vertex_main",
-        compile::Stage::Vertex,
-    );
-    let fs_spirv = compile_program(
-        compile_service,
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
-        "fragment_main",
-        compile::Stage::Fragment,
+        [
+            compile::EntryPointRef::new("vertex_main", compile::Stage::Vertex),
+            compile::EntryPointRef::new("fragment_main", compile::Stage::Fragment),
+        ],
     );
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
@@ -762,23 +754,39 @@ impl GBuffer {
     }
 }
 
-fn compile_program<'a>(
-    service: &compile::CompileService,
+fn compile_program(
+    service: &mut compile::CompileService,
     path: PathBuf,
     entry_point: &str,
     stage: compile::Stage,
 ) -> compile::Spirv {
-    let desc = compile::CompileDesc {
-        source: compile::FileSource::File(path),
-        entry: compile::EntryPoint {
-            name: entry_point.to_string(),
-            stage,
-        },
-        matrix_layout: compile::MatrixLayout::ColumnMajor,
-        optimization: compile::OptimizationLevel::Default,
-        debug_info: None,
-        specialization: None,
-    };
+    let [result] = compile_programs(service, path, [compile::EntryPointRef::new(entry_point, stage)]);
+    result
+}
 
-    service.compile(desc).unwrap()
+fn compile_programs<const N: usize>(
+    service: &mut compile::CompileService,
+    path: PathBuf,
+    entries: [compile::EntryPointRef<'_>; N],
+) -> [compile::Spirv; N] {
+    let source = service.sources().enqueue_file(path).unwrap();
+    let jobs = entries.map(|entry| compile::CompileDesc::new(source, entry));
+    let mut output = compile::MemoryOutput::default();
+    let report = service
+        .compile_batch(&compile::BatchConfig::default(), &jobs, &mut output)
+        .unwrap();
+    for job in report.jobs {
+        for diagnostic in job.diagnostics {
+            eprint!("{diagnostic}");
+        }
+        job.result.unwrap();
+    }
+    service.sources().release(source).unwrap();
+    output
+        .artifacts
+        .into_iter()
+        .map(|(_, artifact)| artifact)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
 }
