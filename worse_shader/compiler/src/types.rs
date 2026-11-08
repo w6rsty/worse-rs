@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use slang_rs as slang;
+use slang_auto::sys;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OptimizationLevel {
@@ -14,13 +14,13 @@ pub enum OptimizationLevel {
     Maximal = 3,
 }
 
-impl From<OptimizationLevel> for slang::OptimizationLevel {
+impl From<OptimizationLevel> for sys::SlangOptimizationLevel {
     fn from(value: OptimizationLevel) -> Self {
         match value {
-            OptimizationLevel::None => slang::OptimizationLevel::None,
-            OptimizationLevel::Default => slang::OptimizationLevel::Default,
-            OptimizationLevel::High => slang::OptimizationLevel::High,
-            OptimizationLevel::Maximal => slang::OptimizationLevel::Maximal,
+            OptimizationLevel::None => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_NONE,
+            OptimizationLevel::Default => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_DEFAULT,
+            OptimizationLevel::High => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_HIGH,
+            OptimizationLevel::Maximal => sys::SlangOptimizationLevel_SLANG_OPTIMIZATION_LEVEL_MAXIMAL,
         }
     }
 }
@@ -37,13 +37,13 @@ pub enum DebugInfoLevel {
     Maximal = 3,
 }
 
-impl From<DebugInfoLevel> for slang::DebugInfoLevel {
+impl From<DebugInfoLevel> for sys::SlangDebugInfoLevel {
     fn from(value: DebugInfoLevel) -> Self {
         match value {
-            DebugInfoLevel::None => slang::DebugInfoLevel::None,
-            DebugInfoLevel::Minimal => slang::DebugInfoLevel::Minimal,
-            DebugInfoLevel::Standard => slang::DebugInfoLevel::Standard,
-            DebugInfoLevel::Maximal => slang::DebugInfoLevel::Maximal,
+            DebugInfoLevel::None => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_NONE,
+            DebugInfoLevel::Minimal => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_MINIMAL,
+            DebugInfoLevel::Standard => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_STANDARD,
+            DebugInfoLevel::Maximal => sys::SlangDebugInfoLevel_SLANG_DEBUG_INFO_LEVEL_MAXIMAL,
         }
     }
 }
@@ -73,20 +73,20 @@ pub enum Stage {
     Callable,
 }
 
-impl From<Stage> for slang::Stage {
+impl From<Stage> for sys::SlangStage {
     fn from(value: Stage) -> Self {
         match value {
-            Stage::Vertex => slang::Stage::Vertex,
-            Stage::Fragment => slang::Stage::Fragment,
-            Stage::Compute => slang::Stage::Compute,
-            Stage::Mesh => slang::Stage::Mesh,
-            Stage::Task => slang::Stage::Amplification,
-            Stage::RayGeneration => slang::Stage::RayGeneration,
-            Stage::Intersection => slang::Stage::Intersection,
-            Stage::AnyHit => slang::Stage::AnyHit,
-            Stage::ClosestHit => slang::Stage::ClosestHit,
-            Stage::Miss => slang::Stage::Miss,
-            Stage::Callable => slang::Stage::Callable,
+            Stage::Vertex => sys::SlangStage_SLANG_STAGE_VERTEX,
+            Stage::Fragment => sys::SlangStage_SLANG_STAGE_FRAGMENT,
+            Stage::Compute => sys::SlangStage_SLANG_STAGE_COMPUTE,
+            Stage::Mesh => sys::SlangStage_SLANG_STAGE_MESH,
+            Stage::Task => sys::SlangStage_SLANG_STAGE_AMPLIFICATION,
+            Stage::RayGeneration => sys::SlangStage_SLANG_STAGE_RAY_GENERATION,
+            Stage::Intersection => sys::SlangStage_SLANG_STAGE_INTERSECTION,
+            Stage::AnyHit => sys::SlangStage_SLANG_STAGE_ANY_HIT,
+            Stage::ClosestHit => sys::SlangStage_SLANG_STAGE_CLOSEST_HIT,
+            Stage::Miss => sys::SlangStage_SLANG_STAGE_MISS,
+            Stage::Callable => sys::SlangStage_SLANG_STAGE_CALLABLE,
         }
     }
 }
@@ -115,7 +115,7 @@ pub enum FileSource {
     Memory {
         virtual_name: String,
         virutal_path: String,
-        payload: Arc<str>,
+        payload: Arc<String>,
     },
 }
 
@@ -125,7 +125,7 @@ pub struct CompileDesc {
     pub entry: EntryPoint,
     pub matrix_layout: MatrixLayout,
     pub optimization: OptimizationLevel,
-    /// Provides None for strip (-g0 --separate-debug-info)
+    /// `None` disables debug information; use `DebugFlags::SEPARATE` for a sidecar.
     pub debug_info: Option<DebugInfo>,
     pub specialization: Option<FileSource>,
 }

@@ -57,7 +57,7 @@ void mesh_main(
         float3 world_position           = rotate_by_quaternion(particle.position + cube_position, root.orientation);
         vertices[thread_index].position = mul(root.view_projection, float4(world_position, 1.0f));
         vertices[thread_index].velocity = length(particle.velocity);
-        vertices[thread_index].normal = rotate_by_quaternion(cube_normals[thread_index >> 2u], root.orientation);
+        vertices[thread_index].normal   = rotate_by_quaternion(cube_normals[thread_index >> 2u], root.orientation);
     }
 
     if (thread_index < 12) {
@@ -75,32 +75,30 @@ struct FragmentOutput {
 
 [shader("fragment")]
 FragmentOutput fragment_main(VertexOutput input) {
-    float wavelength = lerp(380.0f, 780.0f, saturate(input.velocity / 0.15f));
+    const float SPEED_MIN = 0.5f;
+    const float SPEED_MAX = 9.0f;
+    const float GAMMA     = 0.6f;
+    const float WL_MIN    = 440.0f;
+    const float WL_MAX    = 645.0f;
+
+    float t = saturate((input.velocity - SPEED_MIN) / (SPEED_MAX - SPEED_MIN));
+    t       = pow(t, GAMMA);
+
+    float wavelength = lerp(WL_MIN, WL_MAX, t);
     float3 color;
 
-    if (wavelength < 440.0f) {
-        color = float3(-(wavelength - 440.0f) / 60.0f, 0.0f, 1.0f);
-    } else if (wavelength < 490.0f) {
+    if (wavelength < 490.0f) {
         color = float3(0.0f, (wavelength - 440.0f) / 50.0f, 1.0f);
     } else if (wavelength < 510.0f) {
         color = float3(0.0f, 1.0f, -(wavelength - 510.0f) / 20.0f);
     } else if (wavelength < 580.0f) {
         color = float3((wavelength - 510.0f) / 70.0f, 1.0f, 0.0f);
-    } else if (wavelength < 645.0f) {
-        color = float3(1.0f, -(wavelength - 645.0f) / 65.0f, 0.0f);
     } else {
-        color = float3(1.0f, 0.0f, 0.0f);
-    }
-
-    float intensity = 1.0f;
-    if (wavelength < 420.0f) {
-        intensity = 0.3f + 0.7f * (wavelength - 380.0f) / 40.0f;
-    } else if (wavelength > 700.0f) {
-        intensity = 0.3f + 0.7f * (780.0f - wavelength) / 80.0f;
+        color = float3(1.0f, -(wavelength - 645.0f) / 65.0f, 0.0f);
     }
 
     FragmentOutput output   = {};
-    output.albedo           = float4(color * intensity, 1.0f);
+    output.albedo           = float4(color, 1.0f);
     output.normal_roughness = float4(normalize(input.normal), 0.55f);
     return output;
 }

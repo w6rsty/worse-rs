@@ -2,10 +2,12 @@
 name = "worse_shader_compiler"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
-slang-rs = { workspace = true }
+slang-auto = { workspace = true }
 bitflags = { workspace = true }
 thiserror = { workspace = true }
 arrayvec = { workspace = true }
 tracing = { workspace = true }
+bytemuck = { workspace = true }

@@ -189,25 +189,25 @@ fn make_context(window: Arc<Window>) -> (rhi::Instance, rhi::Device) {
 }
 
 fn make_simulation_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
-    let cs = compile_program(
+    let cs_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/simulation.slang"),
         "compute_main",
         compile::Stage::Compute,
     );
     device
-        .create_compute_pipeline(rhi::ShaderStage::new(&cs, "compute_main"))
+        .create_compute_pipeline(rhi::ShaderStage::new(&cs_spirv.words().unwrap(), "compute_main"))
         .unwrap()
 }
 
 fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
-    let ms = compile_program(
+    let ms_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
         "mesh_main",
         compile::Stage::Mesh,
     );
-    let fs = compile_program(
+    let fs_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/gbuffer.slang"),
         "fragment_main",
@@ -217,9 +217,9 @@ fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::Compil
         .create_raster_pipeline(rhi::RasterPipelineDesc {
             primitive: rhi::PrimitiveStages::Mesh {
                 task: None,
-                mesh: rhi::ShaderStage::new(&ms, "mesh_main"),
+                mesh: rhi::ShaderStage::new(&ms_spirv.words().unwrap(), "mesh_main"),
             },
-            fragment: rhi::ShaderStage::new(&fs, "fragment_main"),
+            fragment: rhi::ShaderStage::new(&fs_spirv.words().unwrap(), "fragment_main"),
             rasterizer: rhi::RasterizerState {
                 cull_mode: rhi::CullMode::Back,
                 front_face: rhi::FrontFace::CounterClockwise,
@@ -236,13 +236,13 @@ fn make_gbuffer_pipeline(device: &rhi::Device, compile_service: &compile::Compil
 }
 
 fn make_shading_pipeline(device: &rhi::Device, compile_service: &compile::CompileService) -> rhi::Pipeline {
-    let vs = compile_program(
+    let vs_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
         "vertex_main",
         compile::Stage::Vertex,
     );
-    let fs = compile_program(
+    let fs_spirv = compile_program(
         compile_service,
         Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/assets/deferred_shading.slang"),
         "fragment_main",
@@ -251,9 +251,9 @@ fn make_shading_pipeline(device: &rhi::Device, compile_service: &compile::Compil
     device
         .create_raster_pipeline(rhi::RasterPipelineDesc {
             primitive: rhi::PrimitiveStages::Vertex {
-                vertex: rhi::ShaderStage::new(&vs, "vertex_main"),
+                vertex: rhi::ShaderStage::new(&vs_spirv.words().unwrap(), "vertex_main"),
             },
-            fragment: rhi::ShaderStage::new(&fs, "fragment_main"),
+            fragment: rhi::ShaderStage::new(&fs_spirv.words().unwrap(), "fragment_main"),
             rasterizer: rhi::RasterizerState { ..Default::default() },
             color_targets: &[rhi::ColorTargetDesc::default_with_format(rhi::PixelFormat::RGBA8Srgb)],
             depth_format: rhi::PixelFormat::Undefined,
@@ -762,12 +762,12 @@ impl GBuffer {
     }
 }
 
-fn compile_program(
+fn compile_program<'a>(
     service: &compile::CompileService,
     path: PathBuf,
     entry_point: &str,
     stage: compile::Stage,
-) -> Vec<u32> {
+) -> compile::Spirv {
     let desc = compile::CompileDesc {
         source: compile::FileSource::File(path),
         entry: compile::EntryPoint {
@@ -780,6 +780,5 @@ fn compile_program(
         specialization: None,
     };
 
-    let codes = service.compile(desc).unwrap();
-    codes[0].to_spirv_byte_code().unwrap()
+    service.compile(desc).unwrap()
 }
